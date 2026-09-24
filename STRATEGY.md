@@ -13,8 +13,8 @@ Jev picks among four exclusive options and returns a probability for each. The h
 1. The wall is the public Binance tape (trades and 1-second candles) and a paper book. Jev starts off. The tape still moves.
 2. Arm Jev. If `TYPESAFE_API_KEY` is set, the source is **Live Jev**. Otherwise it is the **Local surface**, labeled offline fallback. The toggle is on the decision feed: Live Jev / Local surface.
 3. The host reads about seven seconds of tape plus the book: momentum, taker imbalance, volatility, shock, regime (`trend` or `chop`), inventory, cooldown, symbol, last price, cash room, caps remaining. That object is the whole `state`. It is not a writeup.
-4. On a meaningful tape change, and at least every 2.5 seconds while armed, the server posts one Choice to `https://api.typesafe.ai/v1/systemone` (`model: jev-latest`). The browser never sees the key. The local feature readout can move faster than that. We do not call on every 650ms tick.
-5. Jev answers `act_buy`, `act_sell`, `wait`, or `escalate`, with a probability on each. The readout shows Live vs Local, the model id that answered, latency, the four probabilities, the regime, and a size preview.
+4. On a meaningful tape change, and at least every 2.5 seconds while armed, the server posts one Choice to `https://api.typesafe.ai/v1/systemone` (`model: jev-latest`). The browser never sees the key. Tape features are recomputed faster than the hosted call, but the Jev readout keeps each completed response together. We do not call on every 650ms tick.
+5. Jev answers `act_buy`, `act_sell`, `wait`, or `escalate`, with a probability on each. The readout shows Live vs Local, the model id that answered, latency, the four probabilities, that response's regime, and its applied or blocked size line.
 6. The host reads `p` on the option Jev selected.
    - `p < 0.60` → no fill. The row is recorded as wait, marked too soft.
    - `0.60–0.74` → $50
@@ -40,7 +40,7 @@ The Tape Alignment Surface in `src/lib/jev/surface.ts` is the offline fallback. 
 ## Gates that always win
 
 - Jev off: no new judgment, no new fill. Marks keep running.
-- Cooldown: 2.5s after a fill, the host will not send another act. The row says `cooldown 1.2s`.
+- Cooldown: 2.5s after a fill, the host will not fill another act. Live Jev may still return an act, but the host records it as blocked and the row says `cooldown 1.2s`.
 - Caps, from `LAWS.bend`: cash $10,000, trade $200, symbol $1,500, gross $3,000. Caps bind the order, not a later mark-to-market rally.
 - Minimum paper clip is $5. Below that, the row is blocked.
 - Escalate never reaches the book.
@@ -60,7 +60,7 @@ Every paper fill stores the judgment id that caused it. The feed row and the rec
 
 ## Cadence
 
-- Feature readout: about every 650ms, sooner when shock is past the line. Same window as before.
+- Tape-state recomputation: about every 650ms, sooner when shock is past the line. Same window as before.
 - Live call: not while a call is in flight; not twice inside 800ms; immediately on a regime change, a 1bp momentum move, a 0.15 imbalance move, a momentum sign flip, or shock crossing 1.8bp; otherwise every 2.5s.
 - A 429 honors `retry-after` (capped at 60s) before the next call.
 - The call itself times out at 4 seconds and fails closed to wait.
