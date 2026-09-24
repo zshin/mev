@@ -40,3 +40,22 @@ test("the browser client accepts a host result and rejects a foreign body", asyn
   if (bad.type === "closed") assert.equal(bad.reason, "malformed");
   assert.equal(JSON.stringify(bad).includes("nope"), false);
 });
+
+test("the browser client rejects a Choice carried by an HTTP error", async () => {
+  const result = await requestLiveChoice(state, new AbortController().signal, async () => {
+    return new Response(
+      JSON.stringify({
+        type: "choice",
+        model: "jev-1.13.0",
+        latencyMs: 20,
+        action: "act_buy",
+        probability: 0.95,
+        confidence: 0.95,
+        optionScores: { act_buy: 0.95, act_sell: 0.01, wait: 0.03, escalate: 0.01 },
+      }),
+      { status: 503 },
+    );
+  });
+  assert.equal(result.type, "closed");
+  if (result.type === "closed") assert.equal(result.reason, "unavailable");
+});

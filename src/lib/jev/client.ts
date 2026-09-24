@@ -14,6 +14,7 @@ export async function requestLiveChoice(
       headers: { "content-type": "application/json", accept: "application/json" },
       body: JSON.stringify(state),
     });
+    if (!response.ok) return closedResult("unavailable", 0);
     const json: unknown = await response.json();
     const parsed = hostResultSchema.safeParse(json);
     if (!parsed.success) return closedResult("malformed", 0);
