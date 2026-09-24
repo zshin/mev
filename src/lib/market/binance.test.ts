@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { parseMarketPayload, parseRestKlines } from "./binance";
+import { fetchUpstreamCandles, parseMarketPayload, parseRestKlines } from "./binance";
 
 test("trade payload becomes a taker-aware market event", () => {
   const event = parseMarketPayload({
@@ -70,3 +70,39 @@ test("rest klines keep open time in seconds", () => {
   assert.equal(candles[0]?.time, 1_700_000_000);
   assert.equal(candles[1]?.close, 12);
 });
+
+test("a reset on the preferred REST host still bootstraps from vision", async () => {
+  const result = await withFetch(async (url) => {
+    if (url.includes("api.binance.com")) throw new Error("connect ECONNRESET");
+    return Response.json([[1_700_000_000_000, "10", "12", "9", "11", "1"]]);
+  }, () => fetchUpstreamCandles("BTCUSDT", 20));
+  assert.equal(result.host, "data-api.binance.vision");
+  assert.equal(result.candles[0]?.close, 11);
+});
+
+test("an HTTP rejection from the preferred REST host falls through", async () => {
+  const seen: string[] = [];
+  const result = await withFetch(async (url) => {
+    seen.push(url);
+    if (url.includes("api.binance.com")) {
+      return new Response(JSON.stringify({ code: 0, msg: "restricted" }), { status: 451 });
+    }
+    return Response.json([[1_700_000_001_000, "11", "13", "10", "12", "2"]]);
+  }, () => fetchUpstreamCandles("ETHUSDT", 20));
+  assert.equal(result.host, "data-api.binance.vision");
+  assert.equal(result.candles[0]?.close, 12);
+  assert.equal(seen.length, 2);
+});
+
+async function withFetch<T>(
+  respond: (url: string) => Promise<Response>,
+  run: () => Promise<T>,
+): Promise<T> {
+  const original = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL) => respond(String(input))) as typeof fetch;
+  try {
+    return await run();
+  } finally {
+    globalThis.fetch = original;
+  }
+}

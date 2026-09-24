@@ -7,6 +7,7 @@ const REST_HOSTS = ["https://api.binance.com", "https://data-api.binance.vision"
 const PREFERRED_WS = "wss://stream.binance.com:9443/ws";
 const FALLBACK_WS = "wss://data-stream.binance.vision/ws";
 const PREFERRED_GRACE_MS = 900;
+const REST_TIMEOUT_MS = 5_000;
 
 const tradeMessage = z.object({
   e: z.literal("trade"),
@@ -129,18 +130,28 @@ export async function fetchUpstreamCandles(
   let lastStatus = "no response";
   for (const host of REST_HOSTS) {
     const url = `${host}/api/v3/klines?symbol=${symbol}&interval=1s&limit=${limit}`;
-    const response = await fetch(url, { cache: "no-store" });
-    if (!response.ok) {
-      lastStatus = `${new URL(host).host} ${response.status}`;
-      continue;
+    const hostName = new URL(host).host;
+    try {
+      const response = await fetch(url, {
+        cache: "no-store",
+        signal: AbortSignal.timeout(REST_TIMEOUT_MS),
+      });
+      if (!response.ok) {
+        lastStatus = `${hostName} ${response.status}`;
+        await response.body?.cancel();
+        continue;
+      }
+      const payload: unknown = await response.json();
+      const candles = parseRestKlines(payload);
+      if (candles.length === 0) {
+        lastStatus = `${hostName} empty klines`;
+        continue;
+      }
+      return { candles, host: hostName };
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "fetch failed";
+      lastStatus = `${hostName} ${reason}`;
     }
-    const payload: unknown = await response.json();
-    const candles = parseRestKlines(payload);
-    if (candles.length === 0) {
-      lastStatus = `${new URL(host).host} empty klines`;
-      continue;
-    }
-    return { candles, host: new URL(host).host };
   }
   throw new Error(`Bootstrap candles unavailable (${lastStatus})`);
 }
@@ -288,6 +299,8 @@ export async function streamMarket(options: {
       if (isAbort(error) || options.signal.aborted) return;
       attempt += 1;
       const host = knownUrl ? hostOf(knownUrl) : hostOf(FALLBACK_WS);
+      // A dead preferred host must not stick. The next attempt races both sockets again.
+      knownUrl = null;
       options.onStatus({
         type: reconnecting ? "reconnecting" : "connecting",
         host,

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { applyOrder, createBook, equity, unrealizedPnl, type PaperCaps } from "./book";
+import { applyOrder, createBook, equity, grossNotional, unrealizedPnl, type PaperCaps } from "./book";
 
 const caps: PaperCaps = {
   startingCashUsd: 10_000,
@@ -113,4 +113,48 @@ test("symbol notional cap shrinks then blocks", () => {
   assert.equal(third.type, "rejected");
   if (third.type !== "rejected") return;
   assert.equal(third.reason, "symbol notional cap");
+});
+
+test("gross cap shrinks the next symbol, then blocks", () => {
+  const tight: PaperCaps = { ...caps, maxGrossNotionalUsd: 250 };
+  const marks = { BTCUSDT: 100, ETHUSDT: 100, SOLUSDT: 100 };
+  const first = applyOrder(
+    createBook(10_000),
+    { type: "buy", symbol: "BTCUSDT", notionalUsd: 100, price: 100, time: 1 },
+    tight,
+    { type: "open" },
+    marks,
+  );
+  assert.equal(first.type, "filled");
+  if (first.type !== "filled") return;
+  const second = applyOrder(
+    first.book,
+    { type: "buy", symbol: "ETHUSDT", notionalUsd: 100, price: 100, time: 2 },
+    tight,
+    { type: "open" },
+    marks,
+  );
+  assert.equal(second.type, "filled");
+  if (second.type !== "filled") return;
+  const third = applyOrder(
+    second.book,
+    { type: "buy", symbol: "SOLUSDT", notionalUsd: 100, price: 100, time: 3 },
+    tight,
+    { type: "open" },
+    marks,
+  );
+  assert.equal(third.type, "filled");
+  if (third.type !== "filled") return;
+  assert.ok(Math.abs(third.fill.notionalUsd - 50) < 1e-6);
+  assert.ok(Math.abs(grossNotional(third.book, marks) - 250) < 1e-6);
+  const fourth = applyOrder(
+    third.book,
+    { type: "buy", symbol: "SOLUSDT", notionalUsd: 100, price: 100, time: 4 },
+    tight,
+    { type: "open" },
+    marks,
+  );
+  assert.equal(fourth.type, "rejected");
+  if (fourth.type !== "rejected") return;
+  assert.equal(fourth.reason, "gross notional cap");
 });
