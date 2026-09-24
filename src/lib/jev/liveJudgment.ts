@@ -65,7 +65,6 @@ export function markTooSoft(judgment: Judgment): Judgment {
   return {
     ...judgment,
     action: "wait",
-    probability: judgment.optionScores.wait,
     drivers: next,
     reason: next.join(" · "),
   };

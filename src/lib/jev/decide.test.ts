@@ -59,6 +59,7 @@ test("a soft Choice is recorded as wait and does not fill", () => {
     cooldownMs: THRESHOLDS.actCooldownMs,
   });
   assert.equal(decided.judgment.action, "wait");
+  assert.equal(decided.judgment.probability, 0.55);
   assert.match(decided.judgment.reason, /too soft/);
   assert.equal(decided.fill.type, "rejected");
   if (decided.fill.type === "rejected") assert.equal(decided.fill.reason, "too soft");

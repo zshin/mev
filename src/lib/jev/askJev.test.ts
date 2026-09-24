@@ -106,6 +106,18 @@ test("http failures fail closed without copying the body", async () => {
     assert.equal(limitedResult.retryAfterMs, 2_000);
   }
 
+  const limitedWithoutHint = jsonFetch(429, { message: KEY });
+  const limitedWithoutHintResult = await askJev({
+    state,
+    apiKey: KEY,
+    fetchImpl: limitedWithoutHint.fetchImpl,
+  });
+  assert.equal(limitedWithoutHintResult.type, "closed");
+  if (limitedWithoutHintResult.type === "closed") {
+    assert.equal(limitedWithoutHintResult.reason, "rate-limited");
+    assert.equal(limitedWithoutHintResult.retryAfterMs, 10_000);
+  }
+
   const down = jsonFetch(503, KEY);
   const downResult = await askJev({ state, apiKey: KEY, fetchImpl: down.fetchImpl });
   assert.equal(downResult.type, "closed");

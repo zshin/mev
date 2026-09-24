@@ -18,6 +18,7 @@ export const JEV_TIMEOUT_MS = 4_000;
 
 const RESPONSE_TEXT_LIMIT = 100_000;
 const PROBABILITY_SUM_TOLERANCE = 0.02;
+const DEFAULT_RATE_LIMIT_BACKOFF_MS = 10_000;
 
 const upstreamChoiceSchema = z
   .object({
@@ -101,7 +102,10 @@ export async function askJev(input: AskJevInput): Promise<AskJevResult> {
 
     const latencyMs = elapsed();
     if (!response.ok) {
-      const retryAfterMs = response.status === 429 ? readRetryAfter(response.headers.get("retry-after"), now()) : null;
+      const retryAfterMs =
+        response.status === 429
+          ? (readRetryAfter(response.headers.get("retry-after"), now()) ?? DEFAULT_RATE_LIMIT_BACKOFF_MS)
+          : null;
       return closedResult(statusReason(response.status), latencyMs, retryAfterMs);
     }
 
