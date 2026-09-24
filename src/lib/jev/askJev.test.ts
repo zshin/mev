@@ -138,6 +138,15 @@ test("malformed Choice payloads fail closed", async () => {
         tape: {
           type: "choice",
           choice: "act_buy",
+          probabilities: { act_buy: 0.82, act_sell: 0.04, wait: 0.1, escalate: 0.04 },
+        },
+      },
+    }),
+    choiceBody({
+      answers: {
+        tape: {
+          type: "choice",
+          choice: "act_buy",
           probabilities: { act_buy: 0.2, act_sell: 0.1, wait: 0.6, escalate: 0.1 },
           confidence: 0.4,
         },

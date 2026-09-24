@@ -25,7 +25,7 @@ const upstreamChoiceSchema = z
     type: z.literal("choice"),
     choice: z.string(),
     probabilities: z.record(z.string(), z.number()),
-    confidence: z.number().finite().optional(),
+    confidence: z.number().finite().min(0).max(1),
   })
   .passthrough();
 
@@ -147,7 +147,7 @@ function parseChoiceBody(text: string, latencyMs: number): HostResult {
     latencyMs,
     action: answer.choice,
     probability: scores[answer.choice],
-    confidence: readConfidence(answer.confidence),
+    confidence: answer.confidence,
     optionScores: scores,
   };
   return choice;
@@ -194,11 +194,6 @@ function isArgmax(choice: ChoiceResult["action"], scores: OptionScoreMap): boole
     best = Math.max(best, scores[action]);
   }
   return scores[choice] >= best - 1e-9;
-}
-
-function readConfidence(value: number | undefined): number | null {
-  if (value === undefined || value < 0 || value > 1) return null;
-  return value;
 }
 
 function statusReason(status: number): ClosedReason {
