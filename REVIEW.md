@@ -70,7 +70,8 @@ Cards use local `toLocaleTimeString`; Lightweight Charts receives UTC timestamps
 
 ## Other wording traps
 
-- `LAWS.bend` is not interpreted. Only four numeric caps are parsed (`src/lib/laws/loadLaws.ts:22`); the forbid/allow prose holds because code implements it separately.
+- `LAWS.bend` is not interpreted. Only four numeric caps are parsed (`src/lib/laws/loadLaws.ts:22`); the forbid/allow prose holds because code implements it separately. The parser takes the first matching key in the whole file, not specifically inside `PositionCaps`, so duplicate cap keys are unsafe (`src/lib/laws/loadLaws.ts:39`).
+- Cooldown is global and symmetric: for 2.5s after any fill it floors both acts, including an act that would reduce the current position (`src/lib/jev/surface.ts:279`). Call it an action throttle, not a de-risking exception.
 - Gross caps bind order entry, not later mark-to-market. A rally can display gross above $3,000 without a cap bypass.
 - The top strip labeled Tape is recent judgments, not raw trades (`src/components/TickerTape.tsx:42`). The chart/headline are the proof that public tape stays live.
 - Short-sale proceeds increase cash. Equity, not cash alone, is the account value.
