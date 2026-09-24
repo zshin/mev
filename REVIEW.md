@@ -1,96 +1,87 @@
-# Jev Paper Desk — adversarial review
+# Tape Alignment Surface — adversarial review
 
-Verdict: **ship-with-fixes**.
+Verdict: **ship-with-fixes** for a controlled live demo. **Do not merge from this review.**
 
-Do not merge from this review. There is no live-order path, and the happy path is real Binance data. Two feed-failover holes could still blank the tape on stage; they are fixed on this branch. What is left is a show script, not another code pass, unless Zeno wants Escalate to actually print.
+The Surface is not a renamed first-match judge. It computes four logits, applies inventory pressure, floors illegal acts, softmaxes the gated logits, and selects the maximum (`src/lib/jev/surface.ts:226`, `src/lib/jev/surface.ts:273`, `src/lib/jev/surface.ts:400`). The remaining risks are mostly state/history claims around that core, not fake scoring.
 
 ## What holds
 
-Paper only. The desk never signs a request, never reads an API key, and never calls an order route. Market IO is public klines plus a public trade/kline socket (`src/lib/market/binance.ts:5`, `src/lib/market/binance.ts:7`). The klines proxy allowlists `BTCUSDT` / `ETHUSDT` / `SOLUSDT` and clamps `limit` to 20–500 (`src/app/api/klines/route.ts:6`). Hosts are constants, not caller input. No SSRF. No `dangerouslySetInnerHTML`. Laws text and error strings are React text nodes.
+- **Paper only.** The only network paths are fixed public Binance REST/WebSocket hosts (`src/lib/market/binance.ts:5`, `src/lib/market/binance.ts:7`). There is no exchange client, signing code, account endpoint, key lookup, wallet, or order route.
+- **Jev-off cannot fill.** The store stops before judging (`src/lib/store.ts:280`) and re-reads the live toggle immediately before `applyOrder`, passing a frozen gate if it changed (`src/lib/store.ts:313`). The book rejects a frozen gate before touching exposure (`src/lib/paper/book.ts:95`).
+- **The Surface is scored and gated.** Trend/chop changes the logits, aligned taker flow changes the favored side, inventory subtracts from adding to the held side, and shock/fight/whipsaw/wide-range conditions add to Escalate (`src/lib/jev/surface.ts:226`). Cooldown floors both acts; symbol, gross, and cash checks floor the affected act (`src/lib/jev/surface.ts:273`). The paper book independently clamps trade, symbol, gross, and cash exposure (`src/lib/paper/book.ts:104`, `src/lib/paper/book.ts:153`).
+- **Regime is reachable both ways.** Trend requires two same-sign half-window moves of at least 0.7 bps and range below 4 bps; everything else is chop (`src/lib/jev/surface.ts:132`). Tests exercise positive trend, negative trend, and several chop shapes.
+- **Displayed probabilities are the gated probabilities.** `probability` is read from `optionScores[action]` after softmax and rounding (`src/lib/jev/surface.ts:174`, `src/lib/jev/surface.ts:400`). The feature line is the actual input snapshot. Drivers are short explanations, not a numerical decomposition of every logit.
+- **Escalate is a stub.** Only `act_buy` and `act_sell` map to an order side (`src/lib/store.ts:362`). Escalate can be selected and recorded but cannot call the book.
+- **A fill and its creating decision are atomic and share one id.** The generated id is passed into the paper order, copied into the fill, and put on the same decision before the single store update (`src/lib/store.ts:308`, `src/lib/store.ts:326`, `src/lib/store.ts:332`, `src/lib/store.ts:342`).
+- **Chart branding is accurate in the product.** Prices are Binance data. Lightweight Charts has `attributionLogo: false`, while the chart header visibly says and links “TradingView Lightweight Charts” (`src/components/PriceChart.tsx:40`, `src/components/PriceChart.tsx:126`). The UI does not call itself a TradingView terminal.
 
-Jev boots **off** (`src/lib/store.ts:93`). With it off, `maybeJudge` returns before `judgeTick` and before `applyOrder` (`src/lib/store.ts:279`). Trades still update the chart and the headline in `handleEvent` before that return. Turning it on is what starts judgments and paper fills. Escalate never leaves the process: only `act_buy` / `act_sell` reach `applyOrder` (`src/lib/store.ts:303`).
+## Tiny contract fixes in this review
 
-`LAWS.bend` is on the wall. The four position numbers are parsed and passed into the book (`src/lib/laws/loadLaws.ts:22`). A direct run of the book keeps `equity = starting + realized + unrealized` across a few hundred mixed buys and sells. Six $100 BTC shorts at 84,129.92 produce cash $10,600, quantity about −0.007132, gross $600, equity $10,000. The equity sparkline in the attached shot (a hair above $10,000) matches that. If the cash cell in that shot truly reads $10,000, the frame does not match this book; the digit is easy to misread as 0.
+1. Warmup and short-window holds previously returned hard-coded probabilities before `applyGates` and `softmax`, contradicting “every option score is post-gate.” They now softmax a hold prior through the same hard gates (`src/lib/jev/surface.ts:157`, `src/lib/jev/surface.ts:184`).
+2. The “current” Surface could show the prior symbol after a coin switch or an old Act after Jev was turned off. The readout now accepts only an armed judgment for the active symbol (`src/components/DecisionFeed.tsx:29`, `src/components/DecisionFeed.tsx:80`).
+3. Wait/Escalate repeat suppression was global across symbols, so the first SOL Wait could disappear because BTC had just waited. The throttle key now includes symbol (`src/lib/store.ts:148`, `src/lib/store.ts:349`, `src/lib/store.ts:378`).
 
-Coin-switch fills do not leak across symbols. `stale` drops events when the abort fired, the generation moved, or the active symbol changed (`src/lib/store.ts:509`), and that check runs before `handleEvent`. The generation bump is synchronous inside `startFeed`, before the next socket task can run. Abort closes the live socket: the opener keeps its abort listener and closes every socket it opened (`src/lib/market/binance.ts:255`, `src/lib/market/binance.ts:332`). Switching coins does not accumulate streams.
+## Findings ranked by demo risk
 
-Zod matches a live `data-stream.binance.vision` payload captured for this review (trade `e/s/p/q/T/m`, 1s kline `k.t/i/o/h/l/c/x`). Extra fields are stripped. Acks and foreign symbols become `null`. Prices and card clocks are exchange timestamps, not a local fake tape. There is no mock price generator.
+### 1. High — coin switch still hides and stale-marks open positions
 
-The quiet-dark pass holds. Mint and rose are candles and P&L. The Escalate chip is a dim violet pill, not a neon HUD. Nothing here needs a visual redo.
+`setSymbol` keeps the shared book but clears only active price fields (`src/lib/store.ts:122`). There is one active market stream, so marks for the coin left behind freeze. The position cell renders only `book.positions[symbol]` (`src/components/HudStats.tsx:18`).
 
-Stack matches the contract: Next, Tailwind, Framer Motion, Lightweight Charts, Zustand, Zod (`package.json`).
+Reproduction: fill a BTC short, switch to ETH, then let BTC move. ETH can show a flat active position while cash and gross still include BTC; total equity uses BTC's last mark. That is internally consistent for a single-stream book but visually looks like a missing position and live P&L is stale.
 
-From this environment today: `api.binance.com` klines returned **451** in ~30ms; `data-api.binance.vision` returned 1s candles **200**. `wss://stream.binance.com:9443/ws` errored; `wss://data-stream.binance.vision/ws` delivered trades. The initial race handles that shape: HTTP 451 already fell through, and the socket race gives the preferred host 900ms before committing to vision.
+Before stage: switch coins before the first fill, or explicitly say “the book is multi-symbol, but this demo marks only the selected socket.” A real fix needs concurrent marks or an all-position panel; it is not a tiny patch.
 
-## Fixes in this pass
+### 2. Medium — fill/decision links are not retained as a pair
 
-1. **REST failover stopped at the first thrown fetch.** A 451 or 500 tried the next host. A reset, a DNS failure, a timeout, or a non-JSON body threw out of `fetchUpstreamCandles` and never called vision. `runSymbol` then marked the desk offline and never opened the trade socket (`src/lib/store.ts:223`). A blackholed `api.binance.com` blanks the show even when vision is healthy. Each host now has a 5s timeout, and a thrown attempt continues the loop (`src/lib/market/binance.ts:134`).
-2. **A dead socket stuck to whichever URL won the first race.** After one successful open, reconnects called only `openKnownSocket(knownUrl)`. If that host later refused the handshake, the desk retried it forever and never raced vision again. An open failure now clears `knownUrl` so the next attempt uses the same preferred-vs-vision race as the first connect (`src/lib/market/binance.ts:301`). A clean close still retries the working host first.
+The book retains 40 fills (`src/lib/paper/book.ts:148`) while the feed independently retains 48 recorded decisions (`src/lib/store.ts:358`). Therefore the id is correct at creation, but visible history is not referentially complete.
 
-Tests cover the REST reset and the 451 fallthrough, and the gross-notional cap (it was untested).
+- After one fill, more than 48 recorded Wait/Escalate transitions can evict its decision while the fill remains in the book.
+- After more than 48 acts, the feed can retain filled decisions whose fills have already fallen out of the 40-fill ring.
 
-## Findings, by demo risk
+The HUD only shows the newest three fills, so normal demos are unlikely to hit this. Do not claim the bounded histories form an audit ledger. If that claim matters, retain linked records together or derive both views from one event log.
 
-### 1. Escalate will not print on a normal BTC/ETH tape
+### 3. Medium — the store-level safety contract is not integration-tested
 
-`SHOCK_MOVE_BPS` is 7 and `WIDE_VOL_BPS` is 28 (`src/lib/jev/judge.ts:27`). Seven basis points on **one** print is about $59 on BTC and does not happen between consecutive trades. A 20s capture during this review: ETH, 250 trades, loudest 7s range 0.93 bps, zero act windows, zero escalate windows. SOL produced a few sell windows. The attached shot already shows the Escalate column as “No stubs yet” while Act has fills.
+Pure tests cover Surface gates and the book's frozen gate, but no test drives `maybeJudge` through the Zustand store and proves: Jev-off never fills, stale-generation events cannot fill after a switch, each filled decision has the same book id, every Act is recorded, and Escalate never calls `applyOrder`.
 
-The stub chrome is real (the chip, no model call, no webhook). The card is not. If the show needs an Escalate card, the thresholds have to come down. That is a product call. I did not retune them.
+These are the highest-value regression tests because the safety guarantee currently depends on wiring in `src/lib/store.ts`, not only the tested pure functions. A refactor could bypass the correct book/Surface units and stay green.
 
-### 2. The judge is a local stand-in, not hosted Jev
+### 4. Low — the “sequential feed” is intentionally lossy
 
-`judgeTick` is a fixed heuristic in `src/lib/jev/judge.ts`. It imports a caps type and nothing else. No model URL, no key, no timeout, no schema for a remote judgment. Probability is `Math.round` of a hand-weighted formula (`src/lib/jev/judge.ts:175`), not a model score.
+Every Act is recorded (`src/lib/store.ts:382`). Wait is sampled at most every 4s and Escalate every 5s while the same symbol/action repeats (`src/lib/store.ts:378`). `latest` still updates each judged cycle, but `decisions` is not a complete judgment ledger.
 
-The shape still teaches the idea: Jev off keeps the tape and forbids new risk; Jev on emits act / wait / escalate; act can paper-fill inside caps; escalate does not trade. The wall labels that box “Jev”. Say, out loud, that this build is a typed stand-in. Otherwise the room will think they watched a hosted judge.
+Say “chronological sampled feed” or “one feed, newest first,” not “every judgment.” Filters and counts apply only to retained rows.
 
-### 3. Coin switch hides an open position and freezes its mark
+### 5. Low — Jev-off is a pre-score stop in the running desk
 
-The book is kept on purpose (`src/lib/store.ts:121` only clears price fields). The feed is one symbol. Marks for the coin you left update only when you come back. The position cell is the **active** symbol only (`src/components/HudStats.tsx:18`). After a BTC short, ETH shows a flat position, cash up by the short proceeds, and a gross figure that no longer has a face. Equity for the hidden leg is last-trade, not live.
+Although `judgeTick` can mathematically gate Jev-off acts, the store returns before calling it while the toggle is off (`src/lib/store.ts:280`). This is safe and matches the README statement that off freezes judgments. It does mean the live demo is not continuously scoring a hidden Surface and then showing an off-gated probability.
 
-Do not switch coins after the first fill unless the line is “the book is still there; this socket is only ETH.” A multi-symbol mark feed is not a small fix. I did not build one.
+Say “Jev-off stops judgment and freezes new paper risk.” Do not say the visible off-state bars are a scored cycle.
 
-### 4. Both REST hosts failing still kills the tape
+### 6. Low — total candle-bootstrap failure still prevents the live socket
 
-If candle bootstrap throws after both hosts, `runSymbol` sets `closed` and returns (`src/lib/store.ts:223`). The trade socket, which can build candles on its own, never starts. The Reconnect button is that path’s recovery. I left it. With the timeout+failover fix, this is the “vision is down too” case, not the “Binance 451” case.
+If both REST hosts fail, `runSymbol` marks the desk closed and returns before opening the trade socket (`src/lib/store.ts:208`, `src/lib/store.ts:227`). The prior host failover fixes cover the common 451/dead-host cases, but simultaneous REST failure still blanks a socket that might otherwise be healthy.
 
-### 5. Chart axis is UTC; the clocks are local
+Use Reconnect if the wall opens Offline. Do not debug this on stage.
 
-Judgment times and the header use `formatClock` → `toLocaleTimeString` (`src/lib/format.ts:35`). Lightweight Charts treats bar times as UTC and this chart sets no `localization` formatter (`src/components/PriceChart.tsx:45`). On a UTC machine they match (the attached shot does). On a US laptop the axis and the cards disagree by hours. Set the laptop to UTC or add a formatter before the show. Not done here; it is a display choice, not a bad fill.
+### 7. Low — chart and card clocks can disagree outside UTC
 
-The headline delta is not the daily change. `sessionOpen` is the open of the oldest bootstrapped 1s candle (`src/lib/store.ts:210`), about three minutes back, and it does not roll as the chart trims. Fine for a short demo. Odd after a long one.
+Cards use local `toLocaleTimeString`; Lightweight Charts receives UTC timestamps and no custom localization formatter (`src/lib/format.ts:35`, `src/components/PriceChart.tsx:32`). The supplied screenshot is on UTC and aligns. A non-UTC demo laptop can show different hours on the axis and feed.
 
-### 6. The strip named Tape is the judgment log
+## Other wording traps
 
-`TickerTape` renders recent decisions (`src/components/TickerTape.tsx:42`). With Jev off and no cards yet, it says “Public tape. Paper fills only.” and then sits. The live market is the chart and the headline, which keep moving. Point at the chart when you say the tape stays up. The strip going quiet is the gate, not a dead socket.
-
-### 7. Laws besides the four numbers are not executed
-
-`parseLaws` reads four keys with a line regex (`src/lib/laws/loadLaws.ts:39`) and ignores `forbid` / `allow` / `when`. `NeverPlaceRealOrders`, `EscalateIsStubbed`, and `JevGatesRisk` hold because the code has no order client, no outbound escalate, and the Jev check above. The panel says “Bound”. That is true of behavior. Editing the forbid lines does not change runtime. There is no law interpreter, and there should not be one for this demo. Do not imply the file is a policy engine.
-
-Caps bind **new orders**, not mark-to-market. A rally can print Gross above $3,000. The HUD looks like a breach. It is the position growing after the fill. Worth one sentence if someone asks.
-
-### 8. Test gap that would let a refactor trade while Jev is off
-
-`applyOrder` rejects a frozen gate (`src/lib/paper/book.test.ts`). Nothing drives `useDesk` and asserts that `jevEnabled: false` never calls it. The store check is a boolean at the top of `maybeJudge`. A later edit can pass `gate: { type: "open" }` and the current tests stay green. Same hole for “socket abort closes the connection” and “stale generation cannot fill.” The new tests lock REST failover and the gross cap only.
-
-### 9. Security and perf, so they are not open questions
-
-- No secrets in the tree. Laws route returns the constitution file. Nothing private is in it.
-- Market strings are parsed to numbers before they hit the DOM. A hostile kline host cannot inject markup through this UI.
-- Bounds: decisions 36 (`src/lib/store.ts:348`), fills 40, candles 600 (`src/lib/store.ts:495`), ticks 7s or 500, equity points 1,800. Chart `setData` / `fitContent` runs on bootstrap and symbol change, not on each trade. `series.update` does run per trade. ETH was ~15 trades/s in the sample. That is fine for a desk. It is not an unbounded tape.
-- The server Zustand module can hold the empty starting book across SSR requests. Fills happen in the browser. Irrelevant for a single-operator demo. Do not host this as a multi-user app without isolating that store.
+- `LAWS.bend` is not interpreted. Only four numeric caps are parsed (`src/lib/laws/loadLaws.ts:22`); the forbid/allow prose holds because code implements it separately.
+- Gross caps bind order entry, not later mark-to-market. A rally can display gross above $3,000 without a cap bypass.
+- The top strip labeled Tape is recent judgments, not raw trades (`src/components/TickerTape.tsx:42`). The chart/headline are the proof that public tape stays live.
+- Short-sale proceeds increase cash. Equity, not cash alone, is the account value.
+- A quiet BTC window may never Escalate. The screenshot proves SOL can produce Act/Wait; it does not prove all four actions occur in every session.
 
 ## Punch list before a live show
 
-1. Say the judge is a local stand-in. Do not say a hosted Jev answered.
-2. Decide whether Escalate must appear. On a calm BTC tape it will not. The chip is the stub you can point at today.
-3. Demo coin-switch **before** the first fill, or narrate the hidden position. Off-screen marks freeze.
-4. Run the laptop clock in UTC, or accept that the chart axis and the cards will disagree.
-5. If the desk opens on Offline, candle bootstrap died. Reconnect. A 451 from `api.binance.com` is normal and should already fail over to vision.
-6. Leave Jev off for the first beat so the chart is obviously alive with empty lanes.
-
-## Not bugs
-
-- Repeated Act sells on a downtrend are the heuristic, not a stuck order. Cooldown is 2.5s (`src/lib/jev/judge.ts:31`). It will lean one way until the $1,500 symbol cap.
-- Wait cards repeating “Inside the noise” means the 7s window is quieter than 1.6 bps. The judge is running.
-- Short proceeds increase cash. Equity stays near the starting $10,000 when the mark equals the average. That is the book, not a missing debit.
+1. Say: “local typed stand-in, not hosted Jev; Binance prices; paper fills only.”
+2. Leave Jev off first to prove the chart moves without judgments or fills, then arm it.
+3. Use SOL if mixed outcomes matter; never promise Escalate on demand.
+4. Switch symbols before the first fill. After a fill, stay on that symbol.
+5. Call the bottom list a sampled chronological feed, not an audit log.
+6. Use a UTC machine/window if feed and chart-axis times must match.
+7. If Offline appears, press Reconnect once; have the supplied screenshot/video ready.

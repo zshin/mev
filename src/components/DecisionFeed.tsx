@@ -23,8 +23,10 @@ export function DecisionFeed() {
   const decisions = useDesk((state) => state.decisions);
   const latest = useDesk((state) => state.latest);
   const jevEnabled = useDesk((state) => state.jevEnabled);
+  const symbol = useDesk((state) => state.symbol);
   const [filter, setFilter] = useState<FeedFilter>("all");
   const visible = decisions.filter((decision) => matches(decision.judgment.action, filter));
+  const current = jevEnabled && latest?.symbol === symbol ? latest : null;
 
   return (
     <section className="glass-panel flex min-h-0 flex-col" data-testid="decision-feed">
@@ -37,8 +39,8 @@ export function DecisionFeed() {
             </span>
           </div>
           <p className="mt-1 truncate font-mono text-[11px] text-zinc-400">
-            {latest
-              ? `${baseAsset(latest.symbol)}  ${chipLabel(latest.judgment.action)}  ${latest.judgment.probability.toFixed(2)}  ${latest.judgment.reason}`
+            {current
+              ? `${baseAsset(current.symbol)}  ${chipLabel(current.judgment.action)}  ${current.judgment.probability.toFixed(2)}  ${current.judgment.reason}`
               : jevEnabled
                 ? "Reading the tape"
                 : "Jev off. Tape live. Surface gated."}
@@ -75,7 +77,7 @@ export function DecisionFeed() {
             <p className="px-2 py-8 text-center text-[12px] text-zinc-600">{emptyCopy(filter, jevEnabled, decisions.length)}</p>
           ) : null}
         </div>
-        <SurfaceReadout judgment={latest?.judgment ?? null} jevEnabled={jevEnabled} />
+        <SurfaceReadout judgment={current?.judgment ?? null} jevEnabled={jevEnabled} />
       </div>
     </section>
   );

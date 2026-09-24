@@ -65,6 +65,12 @@ export const THRESHOLDS = {
 
 const LOGIT_FLOOR = -8;
 const READY_COOLDOWN_MS = 60_000;
+const HOLD_LOGITS: Logits = {
+  act_buy: Math.log(0.04),
+  act_sell: Math.log(0.04),
+  wait: Math.log(0.86),
+  escalate: Math.log(0.06),
+};
 
 export type JudgeAction = "act_buy" | "act_sell" | "wait" | "escalate";
 
@@ -152,10 +158,10 @@ export function judgeTick(input: JudgeInput): Judgment {
   const read = readSurface(input);
   const features = featuresOf(input);
   if (input.sampleCount < THRESHOLDS.warmupPrints) {
-    return hold(read.regime, features, [`warmup · ${input.sampleCount} prints`, "inside the noise"]);
+    return hold(input, read.regime, features, [`warmup · ${input.sampleCount} prints`, "inside the noise"]);
   }
   if (input.spanMs < THRESHOLDS.minSpanMs) {
-    return hold(read.regime, features, ["window still opening", "inside the noise"]);
+    return hold(input, read.regime, features, ["window still opening", "inside the noise"]);
   }
 
   const raw = logits(input, read);
@@ -174,8 +180,8 @@ export function judgeTick(input: JudgeInput): Judgment {
   };
 }
 
-function hold(regime: Regime, features: SurfaceFeatures, drivers: string[]): Judgment {
-  const optionScores: OptionScores = { act_buy: 0.04, act_sell: 0.04, wait: 0.86, escalate: 0.06 };
+function hold(input: JudgeInput, regime: Regime, features: SurfaceFeatures, drivers: string[]): Judgment {
+  const optionScores = softmax(applyGates(HOLD_LOGITS, input).logits);
   return {
     action: "wait",
     probability: optionScores.wait,

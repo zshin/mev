@@ -145,7 +145,7 @@ let raf = 0;
 let pendingTick: Tick | null = null;
 let lastJudgeAt = 0;
 let lastActAt = 0;
-let lastCard: { action: Judgment["action"]; time: number } | null = null;
+let lastCard: { action: Judgment["action"]; symbol: Symbol; time: number } | null = null;
 let lastEquityPaint = 0;
 let decisionSeq = 0;
 
@@ -346,8 +346,8 @@ function maybeJudge(now: number, price: number, symbol: Symbol) {
     time: now,
     fill,
   };
-  const record = shouldRecord(judgment.action, now);
-  if (record) lastCard = { action: judgment.action, time: now };
+  const record = shouldRecord(judgment.action, symbol, now);
+  if (record) lastCard = { action: judgment.action, symbol, time: now };
   const fresh = useDesk.getState();
   useDesk.setState({
     book,
@@ -375,8 +375,8 @@ function orderSide(action: JudgeAction): "buy" | "sell" | null {
   }
 }
 
-function shouldRecord(action: Judgment["action"], now: number): boolean {
-  if (!lastCard || lastCard.action !== action) return true;
+function shouldRecord(action: Judgment["action"], symbol: Symbol, now: number): boolean {
+  if (!lastCard || lastCard.action !== action || lastCard.symbol !== symbol) return true;
   switch (action) {
     case "act_buy":
     case "act_sell":

@@ -59,6 +59,14 @@ test("warmup waits and does not open risk", () => {
   assertSurface(judgment);
 });
 
+test("warmup probabilities still pass through hard gates", () => {
+  const judgment = judgeTick(input({ sampleCount: 4, jevEnabled: false, ...trendBuy }));
+  assert.equal(judgment.action, "wait");
+  assert.ok(judgment.optionScores.act_buy < 0.001);
+  assert.ok(judgment.optionScores.act_sell < 0.001);
+  assertSurface(judgment);
+});
+
 test("a short window waits even when the later tape would trend", () => {
   const judgment = judgeTick(input({ spanMs: 800, ...trendBuy }));
   assert.equal(judgment.action, "wait");
