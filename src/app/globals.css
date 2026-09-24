@@ -1,0 +1,150 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --color-desk: #080b14;
+  --color-ink: #e7eefc;
+  --color-neon: #5ce1ff;
+  --color-mint: #3dffb0;
+  --color-rose: #ff5d73;
+  --color-amber: #ffb020;
+  --color-violet: #c084fc;
+}
+
+html,
+body {
+  height: 100%;
+  background: #080b14;
+  color: #e7eefc;
+}
+
+body {
+  font-family: var(--font-sans);
+}
+
+::selection {
+  background: rgba(92, 225, 255, 0.28);
+  color: white;
+}
+
+.desk-grid {
+  background-image:
+    linear-gradient(rgba(94, 168, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(94, 168, 255, 0.05) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(ellipse at 50% 30%, black 20%, transparent 78%);
+}
+
+.desk-glow {
+  background:
+    radial-gradient(880px 420px at 8% -10%, rgba(92, 225, 255, 0.16), transparent 55%),
+    radial-gradient(640px 360px at 100% 0%, rgba(192, 132, 252, 0.1), transparent 52%),
+    radial-gradient(520px 280px at 70% 110%, rgba(61, 255, 176, 0.06), transparent 50%);
+}
+
+.glass-panel {
+  background: linear-gradient(180deg, rgba(16, 22, 38, 0.82), rgba(8, 11, 20, 0.7));
+  border: 1px solid rgba(148, 196, 255, 0.14);
+  border-radius: 18px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 18px 50px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(18px);
+}
+
+.laws-shell {
+  border-color: rgba(92, 225, 255, 0.32);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 0 42px rgba(92, 225, 255, 0.08);
+}
+
+.desk-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(92, 225, 255, 0.35) transparent;
+}
+
+.desk-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.desk-scroll::-webkit-scrollbar-thumb {
+  background: rgba(92, 225, 255, 0.28);
+  border-radius: 99px;
+}
+
+.escalate-lane {
+  animation: stub-glow 2.8s ease-in-out infinite;
+  background:
+    radial-gradient(420px 180px at 50% 0%, rgba(192, 132, 252, 0.16), transparent 70%),
+    rgba(8, 10, 20, 0.35);
+}
+
+.escalate-chip {
+  display: inline-flex;
+  margin-top: 6px;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 176, 32, 0.7);
+  background: rgba(192, 132, 252, 0.14);
+  padding: 2px 8px;
+  color: #f3e8ff;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  box-shadow: 0 0 16px rgba(192, 132, 252, 0.45);
+}
+
+@keyframes stub-glow {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 0 0 1px rgba(192, 132, 252, 0.28),
+      0 0 22px rgba(192, 132, 252, 0.12);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 176, 32, 0.55),
+      0 0 28px rgba(192, 132, 252, 0.32);
+  }
+}
+
+.live-dot {
+  animation: live-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.8);
+  }
+}
+
+.marquee-track {
+  animation: marquee 42s linear infinite;
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marquee-track,
+  .live-dot,
+  .escalate-lane {
+    animation: none;
+  }
+}
