@@ -11,7 +11,11 @@ export function CoinSwitcher() {
   const setSymbol = useDesk((state) => state.setSymbol);
 
   return (
-    <div className="flex items-center rounded-full border border-white/10 bg-black/40 p-1" role="tablist" aria-label="Symbol">
+    <div
+      className="flex items-center rounded-full border border-white/10 bg-white/[0.03] p-0.5"
+      role="tablist"
+      aria-label="Symbol"
+    >
       {SYMBOLS.map((item) => {
         const active = item === symbol;
         return (
@@ -22,15 +26,15 @@ export function CoinSwitcher() {
             aria-selected={active}
             onClick={() => setSymbol(item)}
             className={cn(
-              "relative rounded-full px-4 py-1.5 font-mono text-xs tracking-[0.16em]",
-              active ? "text-[#041018]" : "text-white/55 hover:text-white",
+              "relative rounded-full px-3 py-1 text-[13px] font-medium tracking-tight",
+              active ? "text-zinc-950" : "text-zinc-400 hover:text-zinc-200",
             )}
           >
             {active ? (
               <motion.span
                 layoutId="active-coin"
-                className="absolute inset-0 rounded-full bg-neon shadow-[0_0_24px_rgba(92,225,255,0.55)]"
-                transition={{ type: "spring", stiffness: 420, damping: 34 }}
+                className="absolute inset-0 rounded-full bg-white"
+                transition={{ type: "spring", stiffness: 460, damping: 38 }}
               />
             ) : null}
             <span className="relative">{label(item)}</span>

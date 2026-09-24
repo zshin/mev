@@ -9,7 +9,7 @@ type Tone = "mint" | "rose" | "cyan" | "violet";
 const toneClass: Record<Tone, string> = {
   mint: "text-mint",
   rose: "text-rose",
-  cyan: "text-neon",
+  cyan: "text-zinc-400",
   violet: "text-violet",
 };
 
@@ -24,16 +24,16 @@ export function ProbabilityRing({ value, tone }: { value: number; tone: Tone }) 
   }, [value]);
 
   return (
-    <div className={cn("relative grid size-12 shrink-0 place-items-center", toneClass[tone])}>
-      <svg viewBox="0 0 40 40" className="size-12 -rotate-90">
-        <circle cx="20" cy="20" r={radius} fill="none" stroke="currentColor" strokeOpacity="0.15" strokeWidth="3" />
+    <div className={cn("relative grid size-10 shrink-0 place-items-center", toneClass[tone])}>
+      <svg viewBox="0 0 40 40" className="size-10 -rotate-90">
+        <circle cx="20" cy="20" r={radius} fill="none" stroke="currentColor" strokeOpacity="0.18" strokeWidth="2" />
         <circle
           cx="20"
           cy="20"
           r={radius}
           fill="none"
           stroke="currentColor"
-          strokeWidth="3"
+          strokeWidth="2"
           strokeLinecap="round"
           strokeDasharray={circumference}
           strokeDashoffset={circumference * (1 - shown)}

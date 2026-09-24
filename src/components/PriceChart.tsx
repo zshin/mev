@@ -15,7 +15,6 @@ export function PriceChart() {
   const symbol = useDesk((state) => state.symbol);
   const lastPrice = useDesk((state) => state.lastPrice);
   const sessionOpen = useDesk((state) => state.sessionOpen);
-  const direction = useDesk((state) => state.priceDirection);
   const taker = useDesk((state) => state.lastTaker);
   const status = useDesk((state) => state.status);
   const error = useDesk((state) => state.error);
@@ -34,13 +33,13 @@ export function PriceChart() {
         height: containerRef.current.clientHeight,
         layout: {
           background: { type: charts.ColorType.Solid, color: "transparent" },
-          textColor: "rgba(231,238,252,0.55)",
+          textColor: "rgba(161,161,170,0.9)",
           fontFamily: "Geist Mono, ui-monospace, monospace",
           fontSize: 11,
         },
         grid: {
-          vertLines: { color: "rgba(92,225,255,0.05)" },
-          horzLines: { color: "rgba(92,225,255,0.05)" },
+          vertLines: { color: "rgba(255,255,255,0.04)" },
+          horzLines: { color: "rgba(255,255,255,0.04)" },
         },
         rightPriceScale: { borderColor: "rgba(255,255,255,0.06)" },
         timeScale: {
@@ -52,16 +51,16 @@ export function PriceChart() {
         },
         crosshair: {
           mode: charts.CrosshairMode.Normal,
-          vertLine: { color: "rgba(92,225,255,0.28)", labelBackgroundColor: "#101626" },
-          horzLine: { color: "rgba(92,225,255,0.28)", labelBackgroundColor: "#101626" },
+          vertLine: { color: "rgba(255,255,255,0.22)", labelBackgroundColor: "#18181b" },
+          horzLine: { color: "rgba(255,255,255,0.22)", labelBackgroundColor: "#18181b" },
         },
       });
       const series = chart.addSeries(charts.CandlestickSeries, {
-        upColor: "#3dffb0",
-        downColor: "#ff5d73",
+        upColor: "#3ecf8e",
+        downColor: "#f07167",
         borderVisible: false,
-        wickUpColor: "#3dffb0",
-        wickDownColor: "#ff5d73",
+        wickUpColor: "#3ecf8e",
+        wickDownColor: "#f07167",
       });
       bindPriceChart({
         setData: (data) => {
@@ -94,33 +93,34 @@ export function PriceChart() {
 
   const delta = lastPrice !== null && sessionOpen !== null ? lastPrice - sessionOpen : null;
   const percent = delta !== null && sessionOpen ? delta / sessionOpen : null;
-  const tone = direction === "down" ? "text-rose" : direction === "up" ? "text-mint" : "text-ink";
+  const changeTone = delta === null ? "text-zinc-400" : delta < 0 ? "text-rose" : delta > 0 ? "text-mint" : "text-zinc-400";
 
   return (
     <section className="glass-panel flex min-h-0 flex-col">
-      <header className="flex shrink-0 items-end justify-between gap-4 px-4 pt-3 pb-2">
+      <header className="flex shrink-0 items-end justify-between gap-4 px-3.5 pt-3 pb-2">
         <div>
-          <div className="font-mono text-[10px] tracking-[0.22em] text-white/40">
-            {symbol} · 1S · {baseAsset(symbol)}
+          <div className="flex items-baseline gap-2">
+            <span className="text-[13px] font-medium tracking-tight text-zinc-200">{baseAsset(symbol)}</span>
+            <span className="font-mono text-[11px] text-zinc-500">{symbol} · 1s</span>
           </div>
-          <div className={cn("mt-1 font-mono text-4xl leading-none tabular-nums tracking-tight", tone)}>
+          <div className="mt-1 font-mono text-[32px] leading-none font-medium tabular-nums tracking-tight text-ink">
             {lastPrice === null ? "—" : formatPrice(lastPrice)}
           </div>
         </div>
         <div className="text-right">
-          <div className={cn("font-mono text-sm tabular-nums", delta !== null && delta < 0 ? "text-rose" : "text-mint")}>
+          <div className={cn("font-mono text-[13px] tabular-nums", changeTone)}>
             {delta === null ? "—" : formatSignedUsd(delta)}
             {percent === null ? "" : `  ${formatPercent(percent)}`}
           </div>
-          <div className="mt-1 font-mono text-[10px] tracking-[0.16em] text-white/40">
-            {taker === "buy" ? "LIFT" : taker === "sell" ? "HIT" : "LAST"} · {status.type === "closed" ? "offline" : status.host}
+          <div className="mt-1 font-mono text-[11px] text-zinc-500">
+            {taker === "buy" ? "Lift" : taker === "sell" ? "Hit" : "Last"} · {status.type === "closed" ? "offline" : status.host}
           </div>
           {status.type === "closed" ? (
             <Button size="sm" variant="outline" className="mt-2" onClick={() => restartFeed()}>
               Reconnect
             </Button>
           ) : null}
-          {error ? <p className="mt-1 max-w-64 font-mono text-[10px] text-rose">{error}</p> : null}
+          {error ? <p className="mt-1 max-w-64 text-[11px] text-rose">{error}</p> : null}
         </div>
       </header>
       <div className="relative min-h-0 flex-1 px-2 pb-2">

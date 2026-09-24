@@ -29,13 +29,13 @@ export function EquityChart() {
         height: containerRef.current.clientHeight,
         layout: {
           background: { type: charts.ColorType.Solid, color: "transparent" },
-          textColor: "rgba(231,238,252,0.5)",
+          textColor: "rgba(161,161,170,0.9)",
           fontFamily: "Geist Mono, ui-monospace, monospace",
           fontSize: 11,
         },
         grid: {
-          vertLines: { color: "rgba(92,225,255,0.04)" },
-          horzLines: { color: "rgba(92,225,255,0.05)" },
+          vertLines: { color: "rgba(255,255,255,0.035)" },
+          horzLines: { color: "rgba(255,255,255,0.04)" },
         },
         rightPriceScale: { borderColor: "rgba(255,255,255,0.06)" },
         timeScale: {
@@ -44,14 +44,14 @@ export function EquityChart() {
           secondsVisible: false,
         },
         crosshair: {
-          vertLine: { color: "rgba(61,255,176,0.3)", labelBackgroundColor: "#101626" },
-          horzLine: { color: "rgba(61,255,176,0.3)", labelBackgroundColor: "#101626" },
+          vertLine: { color: "rgba(255,255,255,0.2)", labelBackgroundColor: "#18181b" },
+          horzLine: { color: "rgba(255,255,255,0.2)", labelBackgroundColor: "#18181b" },
         },
       });
       const series = chart.addSeries(charts.AreaSeries, {
-        lineColor: "#5ce1ff",
-        topColor: "rgba(92,225,255,0.32)",
-        bottomColor: "rgba(92,225,255,0.02)",
+        lineColor: "#e4e4e7",
+        topColor: "rgba(255,255,255,0.14)",
+        bottomColor: "rgba(255,255,255,0.01)",
         lineWidth: 2,
         priceLineVisible: false,
       });
@@ -61,7 +61,7 @@ export function EquityChart() {
         if (start === undefined) return;
         series.createPriceLine({
           price: start,
-          color: "rgba(231,238,252,0.35)",
+          color: "rgba(255,255,255,0.28)",
           lineWidth: 1,
           lineStyle: charts.LineStyle.Dashed,
           title: "start",
@@ -104,19 +104,17 @@ export function EquityChart() {
 
   return (
     <section className="glass-panel flex min-h-0 flex-col">
-      <header className="flex shrink-0 items-center justify-between px-4 pt-3 pb-1">
-        <h2 className="font-mono text-[10px] tracking-[0.22em] text-white/45">EQUITY</h2>
-        <p className={cn("font-mono text-xs tabular-nums", pnl > 0 ? "text-mint" : pnl < 0 ? "text-rose" : "text-white/50")}>
-          {tradeCount > 0 ? `${formatUsd(equityUsd)}  ${formatSignedUsd(pnl)}` : "Flat until the first fill"}
+      <header className="flex shrink-0 items-center justify-between px-3.5 pt-3 pb-1">
+        <h2 className="kicker">Equity</h2>
+        <p className={cn("font-mono text-[12px] tabular-nums", pnl > 0 ? "text-mint" : pnl < 0 ? "text-rose" : "text-zinc-500")}>
+          {tradeCount > 0 ? `${formatUsd(equityUsd)}  ${formatSignedUsd(pnl)}` : "After the first fill"}
         </p>
       </header>
       <div className="relative min-h-0 flex-1">
         <div ref={containerRef} className="absolute inset-2" />
         {tradeCount === 0 ? (
           <div className="pointer-events-none absolute inset-0 grid place-items-center">
-            <p className="rounded-full border border-white/10 bg-black/40 px-3 py-1 font-mono text-[10px] tracking-[0.16em] text-white/45">
-              CURVE ARMS ON FIRST PAPER FILL
-            </p>
+            <p className="text-[12px] text-zinc-500">The curve prints with the first paper fill.</p>
           </div>
         ) : null}
       </div>

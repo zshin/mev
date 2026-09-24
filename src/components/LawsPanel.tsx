@@ -7,28 +7,23 @@ export function LawsPanel({ source }: { source: string }) {
   const lines = source.replace(/\s+$/, "").split("\n");
 
   return (
-    <section className="laws-shell glass-panel flex min-h-0 flex-col">
-      <header className="flex shrink-0 items-center justify-between px-4 pt-3 pb-2">
-        <div className="flex items-center gap-2">
-          <span className="size-1.5 rounded-full bg-neon shadow-[0_0_10px_#5ce1ff]" />
-          <h2 className="font-mono text-[10px] tracking-[0.22em] text-neon">LAWS.bend</h2>
-        </div>
-        <span className="font-mono text-[10px] tracking-[0.16em] text-white/40">BOUND</span>
+    <section className="glass-panel flex min-h-0 flex-col">
+      <header className="flex shrink-0 items-center justify-between px-3.5 pt-3 pb-2">
+        <h2 className="font-mono text-[12px] text-zinc-200">LAWS.bend</h2>
+        <span className="text-[11px] text-zinc-500">Bound</span>
       </header>
       <div className="desk-scroll min-h-0 flex-1 overflow-auto px-3 pb-3">
-        <div className="rounded-xl border border-white/8 bg-[#070a12]/90">
-          <ol className="py-3 font-mono text-[11px] leading-5">
+        <div className="well">
+          <ol className="py-2.5 font-mono text-[11px] leading-5">
             {lines.map((line, index) => (
-              <li key={`${index}-${line}`} className="grid grid-cols-[2.2rem_minmax(0,1fr)] px-2">
-                <span className="pr-2 text-right text-white/25">{index + 1}</span>
+              <li key={`${index}-${line}`} className="grid grid-cols-[1.75rem_minmax(0,1fr)] px-2.5">
+                <span className="pr-2 text-right text-zinc-600">{index + 1}</span>
                 <span className="whitespace-pre-wrap break-words">{highlightLine(line)}</span>
               </li>
             ))}
           </ol>
         </div>
-        <p className="mt-2 px-1 font-mono text-[10px] tracking-[0.08em] text-white/35">
-          Caps bind the book. Escalate never leaves this process.
-        </p>
+        <p className="mt-2 px-0.5 text-[11px] text-zinc-500">Caps bind the book. Escalate stays in this process.</p>
       </div>
     </section>
   );
@@ -42,14 +37,14 @@ function highlightLine(line: string): ReactNode[] {
   while (match) {
     const [raw, comment, quote, keyword, number, ident, brace, space, other] = match;
     const key = `${index}-${raw}`;
-    if (comment) nodes.push(<span key={key} className="text-white/35">{comment}</span>);
-    else if (quote) nodes.push(<span key={key} className="text-mint">{quote}</span>);
-    else if (keyword) nodes.push(<span key={key} className="text-neon">{keyword}</span>);
-    else if (number) nodes.push(<span key={key} className="text-amber">{number}</span>);
-    else if (ident) nodes.push(<span key={key} className="text-ink">{ident}</span>);
-    else if (brace) nodes.push(<span key={key} className="text-violet">{brace}</span>);
+    if (comment) nodes.push(<span key={key} className="text-zinc-600">{comment}</span>);
+    else if (quote) nodes.push(<span key={key} className="text-zinc-300">{quote}</span>);
+    else if (keyword) nodes.push(<span key={key} className="text-zinc-100">{keyword}</span>);
+    else if (number) nodes.push(<span key={key} className="text-zinc-200">{number}</span>);
+    else if (ident) nodes.push(<span key={key} className="text-zinc-400">{ident}</span>);
+    else if (brace) nodes.push(<span key={key} className="text-zinc-500">{brace}</span>);
     else if (space) nodes.push(<span key={key}>{space}</span>);
-    else nodes.push(<span key={key} className="text-white/55">{other}</span>);
+    else nodes.push(<span key={key} className="text-zinc-500">{other}</span>);
     index += 1;
     match = TOKEN.exec(line);
   }

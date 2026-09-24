@@ -5,17 +5,17 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon/60 disabled:pointer-events-none disabled:opacity-40",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 disabled:pointer-events-none disabled:opacity-40",
   {
     variants: {
       variant: {
-        default: "bg-neon/15 text-neon hover:bg-neon/25",
-        outline: "border border-white/15 bg-white/5 text-ink hover:bg-white/10",
-        ghost: "text-ink/80 hover:bg-white/5",
+        default: "bg-white text-zinc-950 hover:bg-zinc-200",
+        outline: "border border-white/10 bg-white/[0.03] text-ink hover:bg-white/[0.06]",
+        ghost: "text-zinc-300 hover:bg-white/[0.04]",
       },
       size: {
-        default: "h-9 px-4",
-        sm: "h-7 px-3 text-xs",
+        default: "h-8 px-3",
+        sm: "h-7 px-2.5 text-xs",
       },
     },
     defaultVariants: {

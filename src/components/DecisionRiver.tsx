@@ -24,43 +24,42 @@ export function DecisionRiver() {
 
   return (
     <section className="glass-panel flex min-h-0 flex-col">
-      <header className="flex shrink-0 items-center justify-between gap-3 px-4 pt-3 pb-2">
-        <h2 className="font-mono text-[10px] tracking-[0.22em] text-white/45">JUDGMENTS</h2>
-        <p className="truncate font-mono text-[11px] text-white/55">
+      <header className="flex shrink-0 items-center justify-between gap-3 px-3.5 pt-3 pb-2">
+        <h2 className="kicker">Judgments</h2>
+        <p className="truncate font-mono text-[11px] text-zinc-400">
           {latest
             ? `${baseAsset(latest.symbol)}  ${actionTitle(latest.judgment.action)}  ${latest.judgment.probability.toFixed(2)}  ${latest.judgment.reason}`
             : jevEnabled
               ? "Reading the tape"
-              : "Jev off · tape live · judgments gated"}
+              : "Jev off. Tape live. Judgments gated."}
         </p>
       </header>
-      <div className="grid min-h-0 flex-1 grid-cols-3 gap-2 px-3 pb-3">
+      <div className="grid min-h-0 flex-1 grid-cols-3 gap-2 px-2.5 pb-2.5">
         {lanes.map((lane) => {
           const cards = decisions.filter((decision) => laneOf(decision.judgment.action) === lane.id).slice(0, 8);
           return (
             <div
               key={lane.id}
               className={cn(
-                "flex min-h-0 flex-col rounded-2xl border border-white/8 bg-black/25",
-                lane.id === "escalate" && "escalate-lane",
-                !jevEnabled && "opacity-70",
+                "flex min-h-0 flex-col rounded-[10px] border border-white/[0.06] bg-black/20",
+                !jevEnabled && "opacity-80",
               )}
             >
-              <div className="flex items-center justify-between px-3 pt-2.5 pb-1">
+              <div className="flex items-center justify-between gap-2 px-2.5 pt-2 pb-1">
                 <div>
-                  <div className="text-sm font-medium">{lane.title}</div>
-                  <div className="font-mono text-[10px] tracking-[0.14em] text-white/35">{lane.hint}</div>
+                  <div className="text-[13px] font-medium tracking-tight">{lane.title}</div>
+                  <div className="mt-0.5 text-[11px] text-zinc-500">{lane.hint}</div>
                 </div>
-                {lane.id === "escalate" ? <span className="escalate-chip mt-0">Escalate (stub)</span> : null}
+                {lane.id === "escalate" ? <span className="escalate-chip">Escalate (stub)</span> : null}
               </div>
-              <div className="desk-scroll min-h-0 flex-1 space-y-2 overflow-auto px-2 pb-2">
+              <div className="desk-scroll min-h-0 flex-1 space-y-1.5 overflow-auto px-1.5 pb-1.5">
                 <AnimatePresence initial={false}>
                   {cards.map((decision) => (
                     <DecisionCard key={decision.id} decision={decision} />
                   ))}
                 </AnimatePresence>
                 {cards.length === 0 ? (
-                  <p className="px-1 py-6 text-center font-mono text-[10px] tracking-[0.14em] text-white/30">
+                  <p className="px-1 py-6 text-center text-[11px] text-zinc-600">
                     {emptyCopy(lane.id, jevEnabled)}
                   </p>
                 ) : null}
@@ -77,23 +76,22 @@ function DecisionCard({ decision }: { decision: Decision }) {
   const tone = toneFor(decision.judgment.action);
   return (
     <motion.article
-      layout
-      initial={{ opacity: 0, y: 10 }}
+      initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -6 }}
-      transition={{ duration: 0.28 }}
-      className="flex gap-2 rounded-xl border border-white/10 bg-[#0c1220]/80 p-2"
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
+      className="flex gap-2 rounded-lg border border-white/[0.06] bg-white/[0.03] p-2"
     >
       <ProbabilityRing value={decision.judgment.probability} tone={tone} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
-          <span className="font-mono text-[10px] tracking-[0.12em] text-white/45">
+          <span className="font-mono text-[10px] text-zinc-500">
             {baseAsset(decision.symbol)} · {formatClock(decision.time)}
           </span>
           <FillMark decision={decision} />
         </div>
-        <div className="mt-0.5 text-[13px] leading-tight font-medium">{actionTitle(decision.judgment.action)}</div>
-        <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-white/55">{decision.judgment.reason}</p>
+        <div className="mt-0.5 text-[13px] leading-tight font-medium tracking-tight">{actionTitle(decision.judgment.action)}</div>
+        <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-zinc-400">{decision.judgment.reason}</p>
         {decision.judgment.action === "escalate" ? <span className="escalate-chip">Escalate (stub)</span> : null}
       </div>
     </motion.article>
@@ -103,9 +101,9 @@ function DecisionCard({ decision }: { decision: Decision }) {
 function FillMark({ decision }: { decision: Decision }) {
   switch (decision.fill.type) {
     case "filled":
-      return <span className="font-mono text-[10px] text-mint">FILL {formatUsd(decision.fill.notionalUsd, 0)}</span>;
+      return <span className="font-mono text-[10px] text-mint">{formatUsd(decision.fill.notionalUsd, 0)}</span>;
     case "rejected":
-      return <span className="font-mono text-[10px] text-rose">BLOCKED</span>;
+      return <span className="font-mono text-[10px] text-rose">Blocked</span>;
     case "none":
       return null;
     default: {

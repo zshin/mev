@@ -38,18 +38,18 @@ export function HudStats() {
   ];
 
   return (
-    <section className="glass-panel px-4 py-3">
+    <section className="glass-panel px-3.5 py-3">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="font-mono text-[10px] tracking-[0.22em] text-white/45">PAPER BOOK</h2>
-        <p className="font-mono text-[10px] tracking-[0.14em] text-white/40">
-          GROSS {formatUsd(gross, 0)} / {formatUsd(caps.maxGrossNotionalUsd, 0)}
+        <h2 className="kicker">Paper book</h2>
+        <p className="font-mono text-[11px] text-zinc-500">
+          Gross {formatUsd(gross, 0)} / {formatUsd(caps.maxGrossNotionalUsd, 0)}
         </p>
       </div>
-      <div className="grid grid-cols-4 gap-x-3 gap-y-3">
+      <div className="grid grid-cols-4 gap-x-3 gap-y-2.5">
         {cells.map((cell) => (
           <div key={cell.label}>
-            <div className="font-mono text-[10px] tracking-[0.16em] text-white/35">{cell.label}</div>
-            <div className={cn("mt-1 font-mono text-sm tabular-nums", cell.tone)}>{cell.value}</div>
+            <div className="text-[11px] text-zinc-500">{cell.label}</div>
+            <div className={cn("mt-1 font-mono text-[13px] tabular-nums tracking-tight", cell.tone)}>{cell.value}</div>
           </div>
         ))}
       </div>

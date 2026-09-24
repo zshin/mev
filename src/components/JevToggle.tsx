@@ -15,25 +15,17 @@ export function JevToggle() {
       role="switch"
       aria-checked={enabled}
       onClick={() => setJevEnabled(!enabled)}
-      className={cn(
-        "relative h-11 w-[168px] rounded-full border transition-colors",
-        enabled
-          ? "border-neon/50 bg-neon/10 shadow-[0_0_28px_rgba(92,225,255,0.28)]"
-          : "border-white/10 bg-white/5",
-      )}
+      className="flex h-8 items-center gap-2.5 rounded-full border border-white/10 bg-white/[0.03] pr-1 pl-3 transition-colors hover:bg-white/[0.05]"
     >
-      <motion.span
-        className={cn("absolute top-1.5 size-8 rounded-full", enabled ? "bg-neon shadow-[0_0_16px_rgba(92,225,255,0.8)]" : "bg-zinc-500")}
-        animate={{ left: enabled ? 130 : 6 }}
-        transition={{ type: "spring", stiffness: 500, damping: 34 }}
-      />
-      <span
-        className={cn(
-          "absolute top-1/2 -translate-y-1/2 font-mono text-[11px] tracking-[0.22em]",
-          enabled ? "left-4 text-neon" : "right-4 text-white/70",
-        )}
-      >
-        {enabled ? "JEV ON" : "JEV OFF"}
+      <span className={cn("text-[13px] font-medium tracking-tight", enabled ? "text-zinc-100" : "text-zinc-400")}>
+        {enabled ? "Jev on" : "Jev off"}
+      </span>
+      <span className="relative h-6 w-10 rounded-full bg-black/40">
+        <motion.span
+          className={cn("absolute top-0.5 size-5 rounded-full", enabled ? "bg-white" : "bg-zinc-500")}
+          animate={{ left: enabled ? 18 : 2 }}
+          transition={{ type: "spring", stiffness: 520, damping: 36 }}
+        />
       </span>
     </button>
   );
