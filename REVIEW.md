@@ -1,88 +1,179 @@
-# Tape Alignment Surface — adversarial review
+# Live Jev + confidence sizing — adversarial review
 
-Verdict: **ship-with-fixes** for a controlled live demo. **Do not merge from this review.**
+Verdict: **needs-work**. **Do not merge from this review.**
 
-The Surface is not a renamed first-match judge. It computes four logits, applies inventory pressure, floors illegal acts, softmaxes the gated logits, and selects the maximum (`src/lib/jev/surface.ts:226`, `src/lib/jev/surface.ts:273`, `src/lib/jev/surface.ts:400`). The remaining risks are mostly state/history claims around that core, not fake scoring.
+Live mode is not cosmetic. The browser sends a schema-checked desk state to
+`POST /api/jev`; that server route reads `TYPESAFE_API_KEY` and calls the real
+TypeSafe endpoint with a Choice question (`src/app/api/jev/route.ts:7-24`,
+`src/lib/jev/askJev.ts:79-100`). The response parser takes `p` from the selected
+option, and the host sizes from that value (`src/lib/jev/askJev.ts:124-151`,
+`src/lib/jev/size.ts:22-26`, `src/lib/jev/size.ts:82-101`).
 
-## What holds
+The published TypeSafe OpenAPI matches the endpoint, Bearer authentication,
+Choice request, probabilities, and required confidence field. An unauthenticated
+probe reached the endpoint and returned 403. This review environment has no
+TypeSafe key, however, so no successful authenticated Choice was observed.
 
-- **Paper only.** The only network paths are fixed public Binance REST/WebSocket hosts (`src/lib/market/binance.ts:5`, `src/lib/market/binance.ts:7`). There is no exchange client, signing code, account endpoint, key lookup, wallet, or order route.
-- **Jev-off cannot fill.** The store stops before judging (`src/lib/store.ts:280`) and re-reads the live toggle immediately before `applyOrder`, passing a frozen gate if it changed (`src/lib/store.ts:314`). The book rejects a frozen gate before touching exposure (`src/lib/paper/book.ts:95`).
-- **The Surface is scored and gated.** Trend/chop changes the logits, aligned taker flow changes the favored side, inventory subtracts from adding to the held side, and shock/fight/whipsaw/wide-range conditions add to Escalate (`src/lib/jev/surface.ts:226`). Cooldown floors both acts; symbol, gross, and cash checks floor the affected act (`src/lib/jev/surface.ts:273`). The paper book independently clamps trade, symbol, gross, and cash exposure (`src/lib/paper/book.ts:104`, `src/lib/paper/book.ts:153`).
-- **Regime is reachable both ways.** Trend requires two same-sign half-window moves of at least 0.7 bps and range below 4 bps; everything else is chop (`src/lib/jev/surface.ts:132`). Tests exercise positive trend, negative trend, and several chop shapes.
-- **Displayed probabilities are the gated probabilities.** `probability` is read from `optionScores[action]` after softmax and rounding (`src/lib/jev/surface.ts:174`, `src/lib/jev/surface.ts:400`). The feature line is the actual input snapshot. Drivers are short explanations, not a numerical decomposition of every logit.
-- **Escalate is a stub.** Only `act_buy` and `act_sell` map to an order side (`src/lib/store.ts:362`). Escalate can be selected and recorded but cannot call the book.
-- **A fill and its creating decision are atomic and share one id.** The generated id is passed into the paper order, copied into the fill, and put on the same decision before the single store update (`src/lib/store.ts:308`, `src/lib/store.ts:325`, `src/lib/store.ts:333`, `src/lib/store.ts:341`).
-- **Chart branding is accurate in the product.** Prices are Binance data. Lightweight Charts has `attributionLogo: false`, while the chart header visibly says and links “TradingView Lightweight Charts” (`src/components/PriceChart.tsx:40`, `src/components/PriceChart.tsx:126`). The UI does not call itself a TradingView terminal.
+## Ordered findings
 
-## Tiny contract fixes in this review
+### 1. High — the authenticated success path is still unproved
 
-1. Warmup and short-window holds previously returned hard-coded probabilities before `applyGates` and `softmax`, contradicting “every option score is post-gate.” They now softmax a hold prior through the same hard gates (`src/lib/jev/surface.ts:160`, `src/lib/jev/surface.ts:183`).
-2. The “current” Surface could show the prior symbol after a coin switch or an old Act after Jev was turned off. The readout now accepts only an armed judgment for the active symbol (`src/components/DecisionFeed.tsx:29`, `src/components/DecisionFeed.tsx:80`).
-3. Wait/Escalate repeat suppression was global across symbols, so the first SOL Wait could disappear because BTC had just waited. The throttle key now includes symbol (`src/lib/store.ts:148`, `src/lib/store.ts:349`, `src/lib/store.ts:378`).
+All successful Choice tests inject a fake fetch and a fabricated response
+(`src/lib/jev/askJev.test.ts:39-77`). The local environment reported
+`typesafe_key_configured=false`; only missing-key and malformed route behavior
+could be exercised end to end.
 
-## Findings ranked by demo risk
+The implementation agrees with TypeSafe's current OpenAPI and is clearly a real
+server-side call, not a renamed local scorer. That is still weaker than one
+captured authenticated response from the deployment and one resulting paper
+decision. Do that smoke test before the demo. Until then, a request-contract or
+account/configuration problem can make every “Live” cycle fail closed.
 
-### 1. High — coin switch still hides and stale-marks open positions
+Also avoid saying this repository calibrates `p`: it validates and trusts the
+probabilities TypeSafe returns. It does not perform local calibration.
 
-`setSymbol` keeps the shared book but clears only active price fields (`src/lib/store.ts:122`). There is one active market stream, so marks for the coin left behind freeze. The position cell renders only `book.positions[symbol]` (`src/components/HudStats.tsx:18`).
+### 2. High — `/api/jev` is an unmetered shared-key quota proxy
 
-Reproduction: fill a BTC short, switch to ETH, then let BTC move. ETH can show a flat active position while cash and gross still include BTC; total equity uses BTC's last mark. That is internally consistent for a single-stream book but visually looks like a missing position and live P&L is stale.
+Every schema-valid POST reaches TypeSafe with the deployment key
+(`src/app/api/jev/route.ts:14-23`). Cadence, one-in-flight protection, and 429
+backoff live in the browser store (`src/lib/store.ts:370-376`,
+`src/lib/store.ts:490-540`), so direct callers and additional tabs bypass the
+intended aggregate call rate.
 
-Before stage: switch coins before the first fill, or explicitly say “the book is multi-symbol, but this demo marks only the selected socket.” A real fix needs concurrent marks or an all-position panel; it is not a tiny patch.
+This does not reveal the key, and the fixed question limits what can be asked,
+but it can exhaust quota and force the stage demo into repeated 429 waits.
+Protect the deployed route or keep the deployment private. A reliable shared
+limiter/auth boundary is larger than a review patch.
 
-### 2. Medium — fill/decision links are not retained as a pair
+Related wording issue: the seven-second tape and paper book are assembled in the
+`"use client"` store (`src/lib/store.ts:1`, `src/lib/store.ts:330-405`). The
+server validates and forwards that client-supplied state; it does not
+independently reconstruct the market or book.
 
-The book retains 40 fills (`src/lib/paper/book.ts:148`) while the feed independently retains 48 recorded decisions (`src/lib/store.ts:358`). Therefore the id is correct at creation, but visible history is not referentially complete.
+### 3. Medium — a same-symbol tape reversal does not invalidate an in-flight Choice
 
-- After one fill, more than 48 recorded Wait/Escalate transitions can evict its decision while the fill remains in the book.
-- After more than 48 acts, the feed can retain filled decisions whose fills have already fallen out of the 40-fill ring.
+Only one live request may run. New meaningful changes are ignored while it is in
+flight (`src/lib/jev/cadence.ts:44-51`, `src/lib/store.ts:370-405`). On response,
+the old Choice/features are combined with the current price, current book,
+current caps, and a response-time timestamp (`src/lib/store.ts:504-523`,
+`src/lib/store.ts:414-455`).
 
-The HUD only shows the newest three fills, so normal demos are unlikely to hit this. Do not claim the bounded histories form an audit ledger. If that claim matters, retain linked records together or derive both views from one event log.
+The important safety side is correct: inventory lean and all caps are recomputed
+from the response-time book, and settlement is synchronous, so no same-tab
+double-fill was found. The demo risk is semantic: a Choice based on tape from up
+to the four-second server timeout can fill after that tape has reversed. An age
+or signature rejection would be a policy change, so this remains a finding.
 
-### 3. Medium — the store-level safety contract is not integration-tested
+### 4. Medium — coin switching still hides and stale-marks open positions
 
-Pure tests cover Surface gates and the book's frozen gate, but no test drives `maybeJudge` through the Zustand store and proves: Jev-off never fills, stale-generation events cannot fill after a switch, each filled decision has the same book id, every Act is recorded, and Escalate never calls `applyOrder`.
+The desk keeps one market stream and preserves the multi-symbol book. Switching
+symbols clears active price fields but does not keep the old symbol marked
+(`src/lib/store.ts:143-152`, `src/lib/store.ts:598-619`). The HUD shows only the
+selected position while equity, unrealized P&L, and gross still include every
+position (`src/components/HudStats.tsx:10-35`).
 
-These are the highest-value regression tests because the safety guarantee currently depends on wiring in `src/lib/store.ts`, not only the tested pure functions. A refactor could bypass the correct book/Surface units and stay green.
+After filling BTC and switching to ETH, BTC's mark freezes. The wall can show a
+flat ETH position beside stale nonzero account P&L. Stay on one symbol after the
+first fill. Concurrent marks or an all-position panel is outside this review.
 
-### 4. Low — the “sequential feed” is intentionally lossy
+### 5. Medium — the busiest tape can suppress Live calls
 
-Every Act is recorded (`src/lib/store.ts:381`). Wait is sampled at most every 4s and Escalate every 5s while the same symbol/action repeats (`src/lib/store.ts:378`). `latest` still updates each judged cycle, but `decisions` is not a complete judgment ledger.
+The intended feature window is seven seconds, but the tick array is also capped
+at 500 (`src/lib/store.ts:648-655`). Live mode requires the retained prints to
+span at least 1.5 seconds (`src/lib/store.ts:360-361`,
+`src/lib/jev/surface.ts:50-53`). Above roughly 333 prints/second, the retained
+window can become too short and Live stops asking precisely during heavy tape.
 
-Say “chronological sampled feed” or “one feed, newest first,” not “every judgment.” Filters and counts apply only to retained rows.
+This needs a bounded time-window representation rather than an arbitrary larger
+array. For the demo, watch for a readout that stays on “Waiting for a window.”
 
-### 5. Low — Jev-off is a pre-score stop in the running desk
+### 6. Medium — critical store wiring is not integration-tested
 
-Although `judgeTick` can mathematically gate Jev-off acts, the store returns before calling it while the toggle is off (`src/lib/store.ts:280`). This is safe and matches the README statement that off freezes judgments. It does mean the live demo is not continuously scoring a hidden Surface and then showing an off-gated probability.
+The 71 tests cover valuable pure boundaries: TypeSafe parsing, failures, ladder
+cuts, lean, caps, cooldown, and the paper book. There is no store, route, or
+component integration test in the test script (`package.json:10`).
 
-Say “Jev-off stops judgment and freezes new paper risk.” Do not say the visible off-state bars are a scored cycle.
+No automated test drives cancellation through toggle/symbol changes, proves a
+single live response creates at most one fill, checks 429 glue, or verifies the
+displayed source/model/latency/probability/size together. Those are the highest
+regression risks in the shipped path.
 
-### 6. Low — total candle-bootstrap failure still prevents the live socket
+### 7. Low — fail-closed rows show a synthetic probability distribution
 
-If both REST hosts fail, `runSymbol` marks the desk closed and returns before opening the trade socket (`src/lib/store.ts:208`, `src/lib/store.ts:227`). The prior host failover fixes cover the common 451/dead-host cases, but simultaneous REST failure still blanks a socket that might otherwise be healthy.
+Failures become a host-created Wait with probability 1 and scores
+`{ wait: 1, ... }` (`src/lib/jev/liveJudgment.ts:32-57`). The UI also shows the
+fixed failure phrase, no model, latency, and “fail closed,” so it is not silent.
+Still, the 1.00 bar is not a Jev probability. During the demo call it a
+deterministic host wait, not a model answer.
 
-Use Reconnect if the wall opens Offline. Do not debug this on stage.
+### 8. Low — 429 backoff compares different clocks
 
-### 7. Low — chart and card clocks can disagree outside UTC
+`liveNotBefore` is based on browser `Date.now()`, while call cadence is evaluated
+against Binance event timestamps (`src/lib/store.ts:330`,
+`src/lib/store.ts:505-509`, `src/lib/jev/cadence.ts:45-51`). Normal synchronized
+clocks make this negligible; material clock skew can shorten or lengthen the
+backoff.
 
-Cards use local `toLocaleTimeString`; Lightweight Charts receives UTC timestamps and no custom localization formatter (`src/lib/format.ts:35`, `src/components/PriceChart.tsx:32`). The supplied screenshot is on UTC and aligns. A non-UTC demo laptop can show different hours on the axis and feed.
+## Ship blockers fixed in this review
 
-## Other wording traps
+1. A TypeSafe Choice without the OpenAPI-required `confidence` field was
+   accepted and could fill. Upstream and host schemas now require a finite
+   0–1 confidence; the malformed-body suite covers omission
+   (`src/lib/jev/askJev.ts:22-29`, `src/lib/jev/contract.ts:75-85`,
+   `src/lib/jev/askJev.test.ts:132-164`).
+2. The browser client accepted a valid-looking Choice carried on an HTTP 5xx
+   from `/api/jev`. Non-2xx route responses now fail closed before body parsing
+   (`src/lib/jev/client.ts:10-20`, `src/lib/jev/client.test.ts:43-62`).
+3. A 429 without a usable `Retry-After` resumed normal cadence. It now gets a
+   conservative 10-second backoff; valid hints remain capped at 60 seconds
+   (`src/lib/jev/askJev.ts:19-20`, `src/lib/jev/askJev.ts:103-109`,
+   `src/lib/jev/askJev.test.ts:101-129`).
+4. A soft selected act was recorded as Wait using the unrelated Wait-option
+   probability, and the row then called the original choice its runner-up. The
+   row now retains the selected act's `p` as the reason it missed 0.60 and
+   excludes that original choice from runner-up calculation
+   (`src/lib/jev/liveJudgment.ts:61-70`,
+   `src/components/DecisionFeed.tsx:91-119`).
 
-- `LAWS.bend` is not interpreted. Only four numeric caps are parsed (`src/lib/laws/loadLaws.ts:22`); the forbid/allow prose holds because code implements it separately. The parser takes the first matching key in the whole file, not specifically inside `PositionCaps`, so duplicate cap keys are unsafe (`src/lib/laws/loadLaws.ts:39`).
-- Cooldown is global and symmetric: for 2.5s after any fill it floors both acts, including an act that would reduce the current position (`src/lib/jev/surface.ts:279`). Call it an action throttle, not a de-risking exception.
-- Gross caps bind order entry, not later mark-to-market. A rally can display gross above $3,000 without a cap bypass.
-- The top strip labeled Tape is recent judgments, not raw trades (`src/components/TickerTape.tsx:42`). The chart/headline are the proof that public tape stays live.
-- Short-sale proceeds increase cash. Equity, not cash alone, is the account value.
-- A quiet BTC window may never Escalate. The screenshot proves SOL can produce Act/Wait; it does not prove all four actions occur in every session.
+## What was verified
 
-## Punch list before a live show
+- `git fetch origin main`
+- `git diff --stat origin/main...HEAD` and `git diff --name-status origin/main...HEAD`
+- Full-history secret-pattern scan with `git rev-list --all` + `git grep`: no
+  candidate TypeSafe key was found.
+- Production client bundle scan under `.next/static`: no
+  `TYPESAFE_API_KEY`, TypeSafe endpoint, Bearer token, or fake test secret.
+- `npm test`: **71 passed, 0 failed**
+- `npm run typecheck`: passed
+- `npm run lint`: passed
+- `npm run build`: passed; `/api/jev` and `/api/jev/health` are dynamic routes.
+- Local no-key route smoke:
+  - `GET /api/jev/health` → `{"configured":false,"model":"jev-latest"}`
+  - valid `POST /api/jev` → closed / `missing-key`
+  - malformed `POST /api/jev` → closed / `malformed`
+- Published TypeSafe OpenAPI checked at
+  `https://api.typesafe.ai/openapi.json`; unauthenticated
+  `POST https://api.typesafe.ai/v1/systemone` reached the real service and
+  returned 403.
+- `gh pr checks`: no CI checks are configured/reported for this branch.
 
-1. Say: “local typed stand-in, not hosted Jev; Binance prices; paper fills only.”
-2. Leave Jev off first to prove the chart moves without judgments or fills, then arm it.
-3. Use SOL if mixed outcomes matter; never promise Escalate on demand.
-4. Switch symbols before the first fill. After a fill, stay on that symbol.
-5. Call the bottom list a sampled chronological feed, not an audit log.
-6. Use a UTC machine/window if feed and chart-axis times must match.
-7. If Offline appears, press Reconnect once; have the supplied screenshot/video ready.
+Not verified: a successful authenticated hosted Choice, deployed-route quota
+protection, or browser-level rendering. No real exchange order path exists in
+this repository.
+
+## Demo script risks
+
+1. Do not demo “Live” until `/api/jev/health` is configured and one authenticated
+   Choice has shown a real model id, latency, four probabilities, and a paper
+   decision.
+2. Use one browser tab on a private/protected deployment. Extra tabs multiply
+   TypeSafe calls; direct callers bypass browser cadence.
+3. Say “browser builds the desk state; server holds the key and calls TypeSafe.”
+   Do not say the server independently reconstructs the tape or paper book.
+4. After the first fill, do not switch coins. Off-symbol positions keep stale
+   marks.
+5. A failure row's Wait 1.00 is the host's fail-closed output, not Jev certainty.
+6. On 429, stop toggling/reloading and wait for the shown service recovery; the
+   client honors `Retry-After` or waits 10 seconds by default.
+7. If the readout stays on “Waiting for a window” during very heavy tape, the
+   500-print cap may have collapsed the retained span below 1.5 seconds.
