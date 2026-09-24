@@ -1,0 +1,65 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --color-desk: #09090b;
+  --color-ink: #fafafa;
+  --color-mute: #a1a1aa;
+  --color-mint: #3ecf8e;
+  --color-rose: #f07167;
+  --color-amber: #d6d3d1;
+  --color-violet: #c4b5fd;
+}
+
+html,
+body {
+  height: 100%;
+  background: #09090b;
+  color: #fafafa;
+}
+
+body {
+  font-family: var(--font-sans);
+}
+
+::selection {
+  background: rgba(255, 255, 255, 0.16);
+  color: white;
+}
+
+.glass-panel {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.02));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.kicker {
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  color: #71717a;
+}
+
+.well {
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+}
+
+.desk-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+
+.desk-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.desk-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 99px;
+}
+
