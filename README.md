@@ -32,7 +32,7 @@ Live mode posts one Choice (`act_buy`, `act_sell`, `wait`, `escalate`) to TypeSa
 
 The bottom of the wall is one chronological feed, newest first. Filters are All, Act, Wait, Escalate. Acts are always kept. A repeated wait is kept again after 4s, a repeated escalate after 5s. An act row shows `$size · p=… · bucket/lean/cap` and the judgment id. A paper fill uses that same id.
 
-The readout beside the feed shows Live vs Local, the model id that answered, latency, the four probabilities, the regime, and a size preview. Local feature numbers can refresh faster than the hosted call. Calls go out on a meaningful tape change or about every 2.5 seconds, not on every tick.
+The readout beside the feed shows Live vs Local and keeps each completed decision together: model id, latency, four probabilities, regime, and the applied or blocked size line. While another hosted call is pending, it says `asking` and leaves the prior completed decision intact. Calls go out on a meaningful tape change or about every 2.5 seconds, not on every tick.
 
 If the key is missing, the call times out, or TypeSafe returns 401, 429, 5xx, or a body we will not trust, that cycle is wait and the wall says why. The Binance stream keeps running. The desk does not quietly trade the local scorer in live mode.
 
@@ -55,7 +55,7 @@ If the key is missing, the call times out, or TypeSafe returns 401, 429, 5xx, or
 2. **JEV ON / OFF** — master gate for judgments and new fills.
 3. **Live Jev / Local surface** — hosted Choice, or the offline fallback. Live is the default when a key is configured.
 4. **Decisions** — one feed. Filters are All, Act, Wait, Escalate.
-5. **Readout** — regime, model, latency, four probabilities, size preview.
+5. **Readout** — regime, model, latency, four probabilities, and the applied or blocked size line.
 6. **Equity curve** — appears after the first paper fill and keeps updating.
 7. **Paper book** — recent fills list the judgment id that caused them.
 

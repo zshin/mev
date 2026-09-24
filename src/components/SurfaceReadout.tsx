@@ -1,10 +1,7 @@
 "use client";
 
-import { THRESHOLDS, type JudgeAction } from "@/lib/jev/judge";
-import { planSize } from "@/lib/jev/size";
-import type { Symbol } from "@/lib/market/types";
-import type { Book, PaperCaps } from "@/lib/paper/book";
-import { useDesk, type Decision, type SourceMode } from "@/lib/store";
+import type { JudgeAction } from "@/lib/jev/judge";
+import { useDesk, type SourceMode } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
 const rows: { action: JudgeAction; label: string; bar: string }[] = [
@@ -22,14 +19,12 @@ export function SurfaceReadout() {
   const latest = useDesk((state) => state.latest);
   const tapeView = useDesk((state) => state.tapeView);
   const livePending = useDesk((state) => state.livePending);
-  const book = useDesk((state) => state.book);
-  const caps = useDesk((state) => state.caps);
-  const marks = useDesk((state) => state.marks);
 
   const current = jevEnabled && latest && latest.symbol === symbol && latest.judgment.origin === mode ? latest : null;
   const tape = tapeView?.symbol === symbol ? tapeView : null;
-  const regime = tape?.regime ?? current?.judgment.regime ?? null;
-  const preview = current && book ? sizePreview(current, book, caps, marks, symbol, tape?.price ?? current.price, tape?.features.cooldown ?? current.judgment.features.cooldown) : null;
+  const regime = current?.judgment.regime ?? tape?.regime ?? null;
+  const sizeLine =
+    current?.sizeLine ?? (current?.choice === "escalate" ? "stub · no size" : null);
 
   return (
     <aside className="flex w-[200px] shrink-0 flex-col rounded-[10px] border border-white/[0.06] bg-black/20 px-2.5 py-2" data-testid="surface-readout">
@@ -42,7 +37,11 @@ export function SurfaceReadout() {
         <p className="mt-1 font-mono text-[10px] text-zinc-400" data-testid="jev-model">
           {current?.judgment.model ?? "—"}
           {" · "}
-          {current?.judgment.latencyMs != null ? `${Math.round(current.judgment.latencyMs)}ms` : livePending ? "asking" : "—"}
+          {livePending
+            ? "asking"
+            : current?.judgment.latencyMs != null
+              ? `${Math.round(current.judgment.latencyMs)}ms`
+              : "—"}
         </p>
       ) : null}
       {current?.judgment.failure ? (
@@ -74,45 +73,10 @@ export function SurfaceReadout() {
         </p>
       )}
       <p className="mt-2 font-mono text-[10px] leading-snug text-zinc-400" data-testid="size-preview">
-        {preview ? `preview ${preview}` : "preview —"}
+        {sizeLine ? `size ${sizeLine}` : "size —"}
       </p>
     </aside>
   );
-}
-
-function sizePreview(
-  current: Decision,
-  book: Book,
-  caps: PaperCaps,
-  marks: Partial<Record<Symbol, number>>,
-  symbol: Symbol,
-  price: number,
-  msSinceLastAct: number,
-): string | null {
-  if (current.judgment.failure) return null;
-  const plan = planSize({
-    origin: current.judgment.origin,
-    choice: current.choice,
-    probability: current.choiceProbability,
-    book,
-    symbol,
-    price,
-    caps,
-    marks: { ...marks, [symbol]: price },
-    msSinceLastAct,
-    cooldownMs: THRESHOLDS.actCooldownMs,
-  });
-  switch (plan.type) {
-    case "skip":
-      return current.choice === "escalate" ? "stub · no size" : null;
-    case "blocked":
-    case "order":
-      return plan.line;
-    default: {
-      const unreachable: never = plan;
-      return unreachable;
-    }
-  }
 }
 
 function sourceTitle(mode: SourceMode, configured: boolean | null): string {

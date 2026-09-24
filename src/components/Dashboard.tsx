@@ -100,13 +100,13 @@ function Header() {
 function statusLabel(status: "connecting" | "live" | "reconnecting" | "closed"): string {
   switch (status) {
     case "connecting":
-      return "Connecting";
+      return "Binance connecting";
     case "live":
-      return "Live";
+      return "Binance live";
     case "reconnecting":
-      return "Reconnecting";
+      return "Binance reconnecting";
     case "closed":
-      return "Offline";
+      return "Binance offline";
     default: {
       const unreachable: never = status;
       return unreachable;
