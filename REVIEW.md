@@ -7,17 +7,17 @@ The Surface is not a renamed first-match judge. It computes four logits, applies
 ## What holds
 
 - **Paper only.** The only network paths are fixed public Binance REST/WebSocket hosts (`src/lib/market/binance.ts:5`, `src/lib/market/binance.ts:7`). There is no exchange client, signing code, account endpoint, key lookup, wallet, or order route.
-- **Jev-off cannot fill.** The store stops before judging (`src/lib/store.ts:280`) and re-reads the live toggle immediately before `applyOrder`, passing a frozen gate if it changed (`src/lib/store.ts:313`). The book rejects a frozen gate before touching exposure (`src/lib/paper/book.ts:95`).
+- **Jev-off cannot fill.** The store stops before judging (`src/lib/store.ts:280`) and re-reads the live toggle immediately before `applyOrder`, passing a frozen gate if it changed (`src/lib/store.ts:314`). The book rejects a frozen gate before touching exposure (`src/lib/paper/book.ts:95`).
 - **The Surface is scored and gated.** Trend/chop changes the logits, aligned taker flow changes the favored side, inventory subtracts from adding to the held side, and shock/fight/whipsaw/wide-range conditions add to Escalate (`src/lib/jev/surface.ts:226`). Cooldown floors both acts; symbol, gross, and cash checks floor the affected act (`src/lib/jev/surface.ts:273`). The paper book independently clamps trade, symbol, gross, and cash exposure (`src/lib/paper/book.ts:104`, `src/lib/paper/book.ts:153`).
 - **Regime is reachable both ways.** Trend requires two same-sign half-window moves of at least 0.7 bps and range below 4 bps; everything else is chop (`src/lib/jev/surface.ts:132`). Tests exercise positive trend, negative trend, and several chop shapes.
 - **Displayed probabilities are the gated probabilities.** `probability` is read from `optionScores[action]` after softmax and rounding (`src/lib/jev/surface.ts:174`, `src/lib/jev/surface.ts:400`). The feature line is the actual input snapshot. Drivers are short explanations, not a numerical decomposition of every logit.
 - **Escalate is a stub.** Only `act_buy` and `act_sell` map to an order side (`src/lib/store.ts:362`). Escalate can be selected and recorded but cannot call the book.
-- **A fill and its creating decision are atomic and share one id.** The generated id is passed into the paper order, copied into the fill, and put on the same decision before the single store update (`src/lib/store.ts:308`, `src/lib/store.ts:326`, `src/lib/store.ts:332`, `src/lib/store.ts:342`).
+- **A fill and its creating decision are atomic and share one id.** The generated id is passed into the paper order, copied into the fill, and put on the same decision before the single store update (`src/lib/store.ts:308`, `src/lib/store.ts:325`, `src/lib/store.ts:333`, `src/lib/store.ts:341`).
 - **Chart branding is accurate in the product.** Prices are Binance data. Lightweight Charts has `attributionLogo: false`, while the chart header visibly says and links “TradingView Lightweight Charts” (`src/components/PriceChart.tsx:40`, `src/components/PriceChart.tsx:126`). The UI does not call itself a TradingView terminal.
 
 ## Tiny contract fixes in this review
 
-1. Warmup and short-window holds previously returned hard-coded probabilities before `applyGates` and `softmax`, contradicting “every option score is post-gate.” They now softmax a hold prior through the same hard gates (`src/lib/jev/surface.ts:157`, `src/lib/jev/surface.ts:184`).
+1. Warmup and short-window holds previously returned hard-coded probabilities before `applyGates` and `softmax`, contradicting “every option score is post-gate.” They now softmax a hold prior through the same hard gates (`src/lib/jev/surface.ts:160`, `src/lib/jev/surface.ts:183`).
 2. The “current” Surface could show the prior symbol after a coin switch or an old Act after Jev was turned off. The readout now accepts only an armed judgment for the active symbol (`src/components/DecisionFeed.tsx:29`, `src/components/DecisionFeed.tsx:80`).
 3. Wait/Escalate repeat suppression was global across symbols, so the first SOL Wait could disappear because BTC had just waited. The throttle key now includes symbol (`src/lib/store.ts:148`, `src/lib/store.ts:349`, `src/lib/store.ts:378`).
 
@@ -48,7 +48,7 @@ These are the highest-value regression tests because the safety guarantee curren
 
 ### 4. Low — the “sequential feed” is intentionally lossy
 
-Every Act is recorded (`src/lib/store.ts:382`). Wait is sampled at most every 4s and Escalate every 5s while the same symbol/action repeats (`src/lib/store.ts:378`). `latest` still updates each judged cycle, but `decisions` is not a complete judgment ledger.
+Every Act is recorded (`src/lib/store.ts:381`). Wait is sampled at most every 4s and Escalate every 5s while the same symbol/action repeats (`src/lib/store.ts:378`). `latest` still updates each judged cycle, but `decisions` is not a complete judgment ledger.
 
 Say “chronological sampled feed” or “one feed, newest first,” not “every judgment.” Filters and counts apply only to retained rows.
 
