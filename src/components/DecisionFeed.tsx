@@ -91,7 +91,7 @@ export function DecisionFeed() {
 
 function DecisionRow({ decision }: { decision: Decision }) {
   const judgment = decision.judgment;
-  const runner = runnerUp(judgment.optionScores, judgment.action);
+  const runner = runnerUp(judgment.optionScores, decision.choice);
   return (
     <motion.article
       initial={{ opacity: 0, y: 8 }}
