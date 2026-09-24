@@ -109,16 +109,27 @@ export function parseRestKlines(payload: unknown): Candle[] {
   return candles;
 }
 
-export async function fetchCandles(
+const klineResponse = z.object({
+  host: z.string(),
+  candles: z.array(
+    z.object({
+      time: z.number(),
+      open: z.number(),
+      high: z.number(),
+      low: z.number(),
+      close: z.number(),
+    }),
+  ),
+});
+
+export async function fetchUpstreamCandles(
   symbol: Symbol,
   limit: number,
-  signal: AbortSignal,
 ): Promise<{ candles: Candle[]; host: string }> {
   let lastStatus = "no response";
   for (const host of REST_HOSTS) {
-    if (signal.aborted) throw new DOMException("aborted", "AbortError");
     const url = `${host}/api/v3/klines?symbol=${symbol}&interval=1s&limit=${limit}`;
-    const response = await fetch(url, { cache: "no-store", signal });
+    const response = await fetch(url, { cache: "no-store" });
     if (!response.ok) {
       lastStatus = `${new URL(host).host} ${response.status}`;
       continue;
@@ -132,6 +143,27 @@ export async function fetchCandles(
     return { candles, host: new URL(host).host };
   }
   throw new Error(`Bootstrap candles unavailable (${lastStatus})`);
+}
+
+export async function fetchCandles(
+  symbol: Symbol,
+  limit: number,
+  signal: AbortSignal,
+): Promise<{ candles: Candle[]; host: string }> {
+  const response = await fetch(`/api/klines?symbol=${symbol}&limit=${limit}`, {
+    cache: "no-store",
+    signal,
+  });
+  const payload: unknown = await response.json();
+  if (!response.ok) {
+    const parsed = z.object({ error: z.string() }).safeParse(payload);
+    throw new Error(parsed.success ? parsed.data.error : `Bootstrap candles unavailable (${response.status})`);
+  }
+  const parsed = klineResponse.safeParse(payload);
+  if (!parsed.success || parsed.data.candles.length === 0) {
+    throw new Error("Bootstrap candles unavailable");
+  }
+  return parsed.data;
 }
 
 type OpenSocket = { socket: WebSocket; url: string };

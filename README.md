@@ -41,9 +41,9 @@ Jev starts **off**. The tape still moves. Turning it on starts judgments and all
 The desk prefers the public spot socket:
 
 - `wss://stream.binance.com:9443/ws` with `trade` and `kline_1s`
-- REST `https://api.binance.com/api/v3/klines` to bootstrap candles
+- Candle bootstrap goes through `/api/klines` on this server, which calls Binance REST. The browser does not call Binance REST itself.
 
-If that host is blocked, it falls back to Binance's public market-data endpoint, which speaks the same streams and still accepts no orders:
+If the preferred host does not open, the desk falls back to Binance's public market-data endpoint. Same streams, still no orders:
 
 - `wss://data-stream.binance.vision/ws`
 - `https://data-api.binance.vision`

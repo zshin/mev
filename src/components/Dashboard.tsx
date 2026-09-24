@@ -49,11 +49,11 @@ export function Dashboard({ laws }: { laws: DeskLaws }) {
         <Header />
         <TickerTape />
         <main className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_400px] gap-3 px-3 py-3">
-          <div className="grid min-h-0 grid-rows-[minmax(0,1.35fr)_minmax(240px,0.85fr)] gap-3">
+          <div className="grid min-h-0 grid-rows-[minmax(0,1.35fr)_minmax(210px,0.8fr)] gap-3">
             <PriceChart />
             <DecisionRiver />
           </div>
-          <div className="grid min-h-0 grid-rows-[auto_minmax(150px,0.7fr)_minmax(220px,1fr)] gap-3">
+          <div className="grid min-h-0 grid-rows-[auto_minmax(120px,0.7fr)_minmax(0,1fr)] gap-3">
             <HudStats />
             <EquityChart />
             <LawsPanel source={laws.source} />
