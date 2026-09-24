@@ -26,6 +26,7 @@ export function PriceChart() {
     let removed = false;
     let chartCleanup: (() => void) | null = null;
 
+    // Lightweight Charts reads `window` while loading. Keep the import inside the effect so SSR does not evaluate it.
     void import("lightweight-charts").then((charts) => {
       if (removed || !containerRef.current) return;
       chart = charts.createChart(containerRef.current, {
@@ -36,6 +37,7 @@ export function PriceChart() {
           textColor: "rgba(161,161,170,0.9)",
           fontFamily: "Geist Mono, ui-monospace, monospace",
           fontSize: 11,
+          attributionLogo: false,
         },
         grid: {
           vertLines: { color: "rgba(255,255,255,0.04)" },
@@ -115,6 +117,14 @@ export function PriceChart() {
           <div className="mt-1 font-mono text-[11px] text-zinc-500">
             {taker === "buy" ? "Lift" : taker === "sell" ? "Hit" : "Last"} · {status.type === "closed" ? "offline" : status.host}
           </div>
+          <a
+            href="https://www.tradingview.com/lightweight-charts/"
+            target="_blank"
+            rel="noreferrer"
+            className="mt-1 inline-block font-mono text-[10px] text-zinc-600 hover:text-zinc-400"
+          >
+            Chart: TradingView Lightweight Charts
+          </a>
           {status.type === "closed" ? (
             <Button size="sm" variant="outline" className="mt-2" onClick={() => restartFeed()}>
               Reconnect

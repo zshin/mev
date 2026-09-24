@@ -22,6 +22,7 @@ export function EquityChart() {
     let baseline = false;
     let chartCleanup: (() => void) | null = null;
 
+    // Lightweight Charts reads `window` while loading. Keep the import inside the effect so SSR does not evaluate it.
     void import("lightweight-charts").then((charts) => {
       if (removed || !containerRef.current) return;
       chart = charts.createChart(containerRef.current, {
@@ -32,6 +33,7 @@ export function EquityChart() {
           textColor: "rgba(161,161,170,0.9)",
           fontFamily: "Geist Mono, ui-monospace, monospace",
           fontSize: 11,
+          attributionLogo: false,
         },
         grid: {
           vertLines: { color: "rgba(255,255,255,0.035)" },

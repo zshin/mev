@@ -20,6 +20,7 @@ export type PaperFill = {
   notionalUsd: number;
   realizedPnlUsd: number;
   time: number;
+  judgmentId: string;
 };
 
 export type Book = {
@@ -32,8 +33,8 @@ export type Book = {
 };
 
 export type PaperOrder =
-  | { type: "buy"; symbol: Symbol; notionalUsd: number; price: number; time: number }
-  | { type: "sell"; symbol: Symbol; notionalUsd: number; price: number; time: number };
+  | { type: "buy"; symbol: Symbol; notionalUsd: number; price: number; time: number; judgmentId: string }
+  | { type: "sell"; symbol: Symbol; notionalUsd: number; price: number; time: number; judgmentId: string };
 
 export type RiskGate = { type: "open" } | { type: "frozen"; reason: string };
 
@@ -136,6 +137,7 @@ export function applyOrder(
     notionalUsd: notional,
     realizedPnlUsd: combined.realized,
     time: order.time,
+    judgmentId: order.judgmentId,
   };
   const next: Book = {
     startingCashUsd: book.startingCashUsd,

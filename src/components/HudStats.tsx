@@ -1,6 +1,6 @@
 "use client";
 
-import { formatQty, formatSignedUsd, formatUsd } from "@/lib/format";
+import { formatClock, formatQty, formatSignedUsd, formatUsd } from "@/lib/format";
 import { baseAsset } from "@/lib/market/types";
 import { grossNotional } from "@/lib/paper/book";
 import { useDesk } from "@/lib/store";
@@ -53,6 +53,18 @@ export function HudStats() {
           </div>
         ))}
       </div>
+      {book && book.fills.length > 0 ? (
+        <ul className="mt-3 space-y-1 border-t border-white/[0.06] pt-2">
+          {book.fills.slice(0, 3).map((fill) => (
+            <li key={fill.judgmentId} className="flex items-baseline justify-between gap-3 font-mono text-[10px] text-zinc-400">
+              <span className="truncate">
+                {formatClock(fill.time)} {baseAsset(fill.symbol)} {fill.type} {formatUsd(fill.notionalUsd, 0)}
+              </span>
+              <span className="shrink-0 text-zinc-500">{fill.judgmentId}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </section>
   );
 }

@@ -13,7 +13,7 @@ const caps: PaperCaps = {
 test("buy then mark-up moves equity and unrealized together", () => {
   const opened = applyOrder(
     createBook(10_000),
-    { type: "buy", symbol: "BTCUSDT", notionalUsd: 100, price: 100, time: 1 },
+    { type: "buy", symbol: "BTCUSDT", notionalUsd: 100, price: 100, judgmentId: "t", time: 1 },
     caps,
     { type: "open" },
     {},
@@ -21,6 +21,7 @@ test("buy then mark-up moves equity and unrealized together", () => {
   assert.equal(opened.type, "filled");
   if (opened.type !== "filled") return;
   assert.equal(opened.book.cashUsd, 9_900);
+  assert.equal(opened.fill.judgmentId, "t");
   assert.equal(opened.book.positions.BTCUSDT.qty, 1);
   const marks = { BTCUSDT: 110 };
   assert.equal(unrealizedPnl(opened.book, marks), 10);
@@ -31,7 +32,7 @@ test("buy then mark-up moves equity and unrealized together", () => {
 test("selling a long realizes the closed slice", () => {
   const opened = applyOrder(
     createBook(10_000),
-    { type: "buy", symbol: "ETHUSDT", notionalUsd: 100, price: 100, time: 1 },
+    { type: "buy", symbol: "ETHUSDT", notionalUsd: 100, price: 100, judgmentId: "t", time: 1 },
     caps,
     { type: "open" },
     {},
@@ -40,7 +41,7 @@ test("selling a long realizes the closed slice", () => {
   if (opened.type !== "filled") return;
   const closed = applyOrder(
     opened.book,
-    { type: "sell", symbol: "ETHUSDT", notionalUsd: 100, price: 110, time: 2 },
+    { type: "sell", symbol: "ETHUSDT", notionalUsd: 100, price: 110, judgmentId: "t", time: 2 },
     caps,
     { type: "open" },
     { ETHUSDT: 110 },
@@ -56,7 +57,7 @@ test("selling a long realizes the closed slice", () => {
 test("a short gains when price falls", () => {
   const opened = applyOrder(
     createBook(10_000),
-    { type: "sell", symbol: "SOLUSDT", notionalUsd: 100, price: 50, time: 1 },
+    { type: "sell", symbol: "SOLUSDT", notionalUsd: 100, price: 50, judgmentId: "t", time: 1 },
     caps,
     { type: "open" },
     {},
@@ -71,7 +72,7 @@ test("a short gains when price falls", () => {
 test("Jev frozen gate rejects before any fill", () => {
   const result = applyOrder(
     createBook(10_000),
-    { type: "buy", symbol: "BTCUSDT", notionalUsd: 100, price: 100, time: 1 },
+    { type: "buy", symbol: "BTCUSDT", notionalUsd: 100, price: 100, judgmentId: "t", time: 1 },
     caps,
     { type: "frozen", reason: "Jev is off" },
     {},
@@ -86,7 +87,7 @@ test("symbol notional cap shrinks then blocks", () => {
   const tight: PaperCaps = { ...caps, maxSymbolNotionalUsd: 150 };
   const first = applyOrder(
     createBook(10_000),
-    { type: "buy", symbol: "BTCUSDT", notionalUsd: 100, price: 100, time: 1 },
+    { type: "buy", symbol: "BTCUSDT", notionalUsd: 100, price: 100, judgmentId: "t", time: 1 },
     tight,
     { type: "open" },
     {},
@@ -95,7 +96,7 @@ test("symbol notional cap shrinks then blocks", () => {
   if (first.type !== "filled") return;
   const second = applyOrder(
     first.book,
-    { type: "buy", symbol: "BTCUSDT", notionalUsd: 100, price: 100, time: 2 },
+    { type: "buy", symbol: "BTCUSDT", notionalUsd: 100, price: 100, judgmentId: "t", time: 2 },
     tight,
     { type: "open" },
     { BTCUSDT: 100 },
@@ -105,7 +106,7 @@ test("symbol notional cap shrinks then blocks", () => {
   assert.ok(Math.abs(second.fill.notionalUsd - 50) < 1e-6);
   const third = applyOrder(
     second.book,
-    { type: "buy", symbol: "BTCUSDT", notionalUsd: 100, price: 100, time: 3 },
+    { type: "buy", symbol: "BTCUSDT", notionalUsd: 100, price: 100, judgmentId: "t", time: 3 },
     tight,
     { type: "open" },
     { BTCUSDT: 100 },
@@ -120,7 +121,7 @@ test("gross cap shrinks the next symbol, then blocks", () => {
   const marks = { BTCUSDT: 100, ETHUSDT: 100, SOLUSDT: 100 };
   const first = applyOrder(
     createBook(10_000),
-    { type: "buy", symbol: "BTCUSDT", notionalUsd: 100, price: 100, time: 1 },
+    { type: "buy", symbol: "BTCUSDT", notionalUsd: 100, price: 100, judgmentId: "t", time: 1 },
     tight,
     { type: "open" },
     marks,
@@ -129,7 +130,7 @@ test("gross cap shrinks the next symbol, then blocks", () => {
   if (first.type !== "filled") return;
   const second = applyOrder(
     first.book,
-    { type: "buy", symbol: "ETHUSDT", notionalUsd: 100, price: 100, time: 2 },
+    { type: "buy", symbol: "ETHUSDT", notionalUsd: 100, price: 100, judgmentId: "t", time: 2 },
     tight,
     { type: "open" },
     marks,
@@ -138,7 +139,7 @@ test("gross cap shrinks the next symbol, then blocks", () => {
   if (second.type !== "filled") return;
   const third = applyOrder(
     second.book,
-    { type: "buy", symbol: "SOLUSDT", notionalUsd: 100, price: 100, time: 3 },
+    { type: "buy", symbol: "SOLUSDT", notionalUsd: 100, price: 100, judgmentId: "t", time: 3 },
     tight,
     { type: "open" },
     marks,
@@ -149,7 +150,7 @@ test("gross cap shrinks the next symbol, then blocks", () => {
   assert.ok(Math.abs(grossNotional(third.book, marks) - 250) < 1e-6);
   const fourth = applyOrder(
     third.book,
-    { type: "buy", symbol: "SOLUSDT", notionalUsd: 100, price: 100, time: 4 },
+    { type: "buy", symbol: "SOLUSDT", notionalUsd: 100, price: 100, judgmentId: "t", time: 4 },
     tight,
     { type: "open" },
     marks,

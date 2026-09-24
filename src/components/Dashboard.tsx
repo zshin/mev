@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { CoinSwitcher } from "@/components/CoinSwitcher";
-import { DecisionRiver } from "@/components/DecisionRiver";
+import { DecisionFeed } from "@/components/DecisionFeed";
 import { EquityChart } from "@/components/EquityChart";
 import { HudStats } from "@/components/HudStats";
 import { JevToggle } from "@/components/JevToggle";
@@ -48,7 +48,7 @@ export function Dashboard({ laws }: { laws: DeskLaws }) {
         <main className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_392px] gap-2.5 p-2.5">
           <div className="grid min-h-0 grid-rows-[minmax(0,1.35fr)_minmax(200px,0.78fr)] gap-2.5">
             <PriceChart />
-            <DecisionRiver />
+            <DecisionFeed />
           </div>
           <div className="grid min-h-0 grid-rows-[auto_minmax(112px,0.62fr)_minmax(0,1fr)] gap-2.5">
             <HudStats />

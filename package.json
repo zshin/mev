@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/lib/paper/book.test.ts src/lib/jev/judge.test.ts src/lib/laws/loadLaws.test.ts src/lib/market/binance.test.ts"
+    "test": "tsx --test src/lib/paper/book.test.ts src/lib/jev/judge.test.ts src/lib/jev/surface.test.ts src/lib/jev/tape.test.ts src/lib/laws/loadLaws.test.ts src/lib/market/binance.test.ts"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.3",

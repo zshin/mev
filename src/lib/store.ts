@@ -2,13 +2,15 @@
 
 import { create } from "zustand";
 
-import { judgeTick, type Judgment } from "@/lib/jev/judge";
+import { judgeTick, THRESHOLDS, type JudgeAction, type Judgment } from "@/lib/jev/judge";
+import { readTape } from "@/lib/jev/tape";
 import { fetchCandles, streamMarket, type StreamStatus } from "@/lib/market/binance";
 import type { Candle, MarketEvent, Symbol, TakerSide } from "@/lib/market/types";
 import {
   applyOrder,
   createBook,
   equity,
+  grossNotional,
   unrealizedPnl,
   type Book,
   type PaperCaps,
@@ -17,7 +19,7 @@ import {
 export type PriceDirection = "up" | "down" | "flat";
 
 export type DecisionFill =
-  | { type: "filled"; notionalUsd: number }
+  | { type: "filled"; notionalUsd: number; judgmentId: string }
   | { type: "rejected"; reason: string }
   | { type: "none" };
 
@@ -84,7 +86,6 @@ const DEFAULT_CAPS: PaperCaps = {
 const WINDOW_MS = 7_000;
 const JUDGMENT_GAP_MS = 650;
 const FAST_GAP_MS = 420;
-const SHOCK_GAP_BPS = 8;
 const WAIT_REPEAT_MS = 4_000;
 const ESCALATE_REPEAT_MS = 5_000;
 
@@ -277,30 +278,38 @@ function handleEvent(event: MarketEvent) {
 function maybeJudge(now: number, price: number, symbol: Symbol) {
   const state = useDesk.getState();
   if (!state.jevEnabled || !state.book) return;
-  const features = computeFeatures(ticks);
-  if (!features || features.spanMs < 1_500 || features.sampleCount < 12) return;
+  const snapshot = readTape(ticks);
+  if (!snapshot || snapshot.sampleCount < 4 || snapshot.spanMs < 400) return;
   const elapsed = lastJudgeAt === 0 ? Number.POSITIVE_INFINITY : now - lastJudgeAt;
-  const gap = Math.abs(features.lastMoveBps) >= SHOCK_GAP_BPS ? FAST_GAP_MS : JUDGMENT_GAP_MS;
+  const gap = Math.abs(snapshot.shockBps) >= THRESHOLDS.shockBps ? FAST_GAP_MS : JUDGMENT_GAP_MS;
   if (elapsed < gap) return;
 
   lastJudgeAt = now;
   const position = state.book.positions[symbol];
   const marks = { ...state.marks, [symbol]: price };
   const judgment = judgeTick({
-    sampleCount: features.sampleCount,
-    momentumBps: features.momentumBps,
-    imbalance: features.imbalance,
-    volatilityBps: features.volatilityBps,
-    lastMoveBps: features.lastMoveBps,
+    sampleCount: snapshot.sampleCount,
+    spanMs: snapshot.spanMs,
+    momentumBps: snapshot.momentumBps,
+    imbalance: snapshot.imbalance,
+    volatilityBps: snapshot.volatilityBps,
+    shockBps: snapshot.shockBps,
+    shockSource: snapshot.shockSource,
+    earlyMomentumBps: snapshot.earlyMomentumBps,
+    lateMomentumBps: snapshot.lateMomentumBps,
     positionNotionalUsd: position.qty * price,
+    grossNotionalUsd: grossNotional(state.book, marks),
     cashUsd: state.book.cashUsd,
     msSinceLastAct: lastActAt === 0 ? Number.POSITIVE_INFINITY : now - lastActAt,
+    jevEnabled: state.jevEnabled,
     caps: state.caps,
   });
 
+  const id = nextDecisionId();
+  const side = orderSide(judgment.action);
   let book = state.book;
   let fill: DecisionFill = { type: "none" };
-  if (judgment.action === "act_buy" || judgment.action === "act_sell") {
+  if (side) {
     const live = useDesk.getState();
     const gate = live.jevEnabled
       ? ({ type: "open" } as const)
@@ -308,11 +317,12 @@ function maybeJudge(now: number, price: number, symbol: Symbol) {
     const result = applyOrder(
       book,
       {
-        type: judgment.action === "act_buy" ? "buy" : "sell",
+        type: side,
         symbol,
         notionalUsd: live.caps.maxTradeNotionalUsd,
         price,
         time: now,
+        judgmentId: id,
       },
       live.caps,
       gate,
@@ -320,7 +330,7 @@ function maybeJudge(now: number, price: number, symbol: Symbol) {
     );
     if (result.type === "filled") {
       book = result.book;
-      fill = { type: "filled", notionalUsd: result.fill.notionalUsd };
+      fill = { type: "filled", notionalUsd: result.fill.notionalUsd, judgmentId: result.fill.judgmentId };
       lastActAt = now;
       paintEquity(equity(book, marks), now, true);
     } else {
@@ -329,7 +339,7 @@ function maybeJudge(now: number, price: number, symbol: Symbol) {
   }
 
   const decision: Decision = {
-    id: nextDecisionId(),
+    id,
     symbol,
     judgment,
     price,
@@ -345,8 +355,24 @@ function maybeJudge(now: number, price: number, symbol: Symbol) {
     equityUsd: equity(book, marks),
     unrealizedUsd: unrealizedPnl(book, marks),
     latest: decision,
-    decisions: record ? [decision, ...fresh.decisions].slice(0, 36) : fresh.decisions,
+    decisions: record ? [decision, ...fresh.decisions].slice(0, 48) : fresh.decisions,
   });
+}
+
+function orderSide(action: JudgeAction): "buy" | "sell" | null {
+  switch (action) {
+    case "act_buy":
+      return "buy";
+    case "act_sell":
+      return "sell";
+    case "wait":
+    case "escalate":
+      return null;
+    default: {
+      const unreachable: never = action;
+      return unreachable;
+    }
+  }
 }
 
 function shouldRecord(action: Judgment["action"], now: number): boolean {
@@ -414,32 +440,6 @@ function paintEquity(value: number, timeMs: number, force: boolean) {
     if (equityPoints.length > 1_800) equityPoints.splice(0, equityPoints.length - 1_800);
   }
   equityBinding?.update(point);
-}
-
-function computeFeatures(series: Tick[]) {
-  const first = series[0];
-  const last = series.at(-1);
-  if (!first || !last || last.price <= 0 || first.price <= 0) return null;
-  let buy = 0;
-  let sell = 0;
-  let high = Number.NEGATIVE_INFINITY;
-  let low = Number.POSITIVE_INFINITY;
-  for (const tick of series) {
-    if (tick.taker === "buy") buy += tick.qty;
-    else sell += tick.qty;
-    if (tick.price > high) high = tick.price;
-    if (tick.price < low) low = tick.price;
-  }
-  const total = buy + sell;
-  const prev = series.length >= 2 ? series[series.length - 2] : undefined;
-  return {
-    sampleCount: series.length,
-    spanMs: last.time - first.time,
-    momentumBps: ((last.price - first.price) / first.price) * 10_000,
-    imbalance: total > 0 ? (buy - sell) / total : 0,
-    volatilityBps: ((high - low) / last.price) * 10_000,
-    lastMoveBps: prev && prev.price > 0 ? ((last.price - prev.price) / prev.price) * 10_000 : 0,
-  };
 }
 
 function trimTicks(now: number) {
