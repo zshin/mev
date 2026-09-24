@@ -10,7 +10,7 @@ export type LawsDocument = {
 
 const DEFAULT_CAPS: PaperCaps = {
   startingCashUsd: 10_000,
-  maxTradeNotionalUsd: 100,
+  maxTradeNotionalUsd: 200,
   maxSymbolNotionalUsd: 1_500,
   maxGrossNotionalUsd: 3_000,
 };

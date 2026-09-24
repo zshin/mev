@@ -44,6 +44,8 @@ export const STRATEGY_NAME = "Tape Alignment Surface";
  *   Jev off, cooldown, symbol cap, gross cap, cash under `minRoomUsd`.
  * Escalate never clears a gate into a fill. The store only sends act_buy and
  * act_sell to the paper book.
+ *
+ * This scorer is the offline fallback. Live Jev does not use these logits.
  */
 export const THRESHOLDS = {
   warmupPrints: 12,
@@ -105,6 +107,8 @@ export type JudgeInput = {
   caps: Pick<PaperCaps, "maxTradeNotionalUsd" | "maxSymbolNotionalUsd" | "maxGrossNotionalUsd">;
 };
 
+export type JudgmentOrigin = "local" | "live";
+
 export type Judgment = {
   action: JudgeAction;
   probability: number;
@@ -113,6 +117,10 @@ export type Judgment = {
   features: SurfaceFeatures;
   optionScores: OptionScores;
   drivers: string[];
+  origin: JudgmentOrigin;
+  model: string | null;
+  latencyMs: number | null;
+  failure: string | null;
 };
 
 type Logits = OptionScores;
@@ -156,7 +164,7 @@ export function opensRisk(action: JudgeAction): boolean {
 
 export function judgeTick(input: JudgeInput): Judgment {
   const read = readSurface(input);
-  const features = featuresOf(input);
+  const features = surfaceFeatures(input);
   if (input.sampleCount < THRESHOLDS.warmupPrints) {
     return hold(input, read.regime, features, [`warmup · ${input.sampleCount} prints`, "inside the noise"]);
   }
@@ -177,6 +185,10 @@ export function judgeTick(input: JudgeInput): Judgment {
     features,
     optionScores,
     drivers,
+    origin: "local",
+    model: null,
+    latencyMs: null,
+    failure: null,
   };
 }
 
@@ -190,6 +202,10 @@ function hold(input: JudgeInput, regime: Regime, features: SurfaceFeatures, driv
     features,
     optionScores,
     drivers,
+    origin: "local",
+    model: null,
+    latencyMs: null,
+    failure: null,
   };
 }
 
@@ -375,7 +391,7 @@ function detailLine(
   }
 }
 
-function featuresOf(input: JudgeInput): SurfaceFeatures {
+export function surfaceFeatures(input: JudgeInput): SurfaceFeatures {
   return {
     momentumBps: input.momentumBps,
     imbalance: input.imbalance,

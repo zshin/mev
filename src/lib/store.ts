@@ -2,26 +2,32 @@
 
 import { create } from "zustand";
 
-import { judgeTick, THRESHOLDS, type JudgeAction, type Judgment } from "@/lib/jev/judge";
-import { readTape } from "@/lib/jev/tape";
+import { liveCallDue, type TapeSignature } from "@/lib/jev/cadence";
+import { requestLiveChoice } from "@/lib/jev/client";
+import { jevHealthSchema, type DeskState as JevState } from "@/lib/jev/contract";
+import { decidePaper, type DecisionFill } from "@/lib/jev/decide";
+import { buildDeskState, clampInventory } from "@/lib/jev/deskState";
+import { judgeTick, surfaceFeatures, THRESHOLDS, type JudgeAction, type Judgment } from "@/lib/jev/judge";
+import { choiceJudgment, closedJudgment } from "@/lib/jev/liveJudgment";
+import { classifyRegime, type Regime, type SurfaceFeatures } from "@/lib/jev/surface";
+import { readTape, type TapeSnapshot } from "@/lib/jev/tape";
 import { fetchCandles, streamMarket, type StreamStatus } from "@/lib/market/binance";
 import type { Candle, MarketEvent, Symbol, TakerSide } from "@/lib/market/types";
-import {
-  applyOrder,
-  createBook,
-  equity,
-  grossNotional,
-  unrealizedPnl,
-  type Book,
-  type PaperCaps,
-} from "@/lib/paper/book";
+import { createBook, equity, grossNotional, unrealizedPnl, type Book, type PaperCaps } from "@/lib/paper/book";
 
 export type PriceDirection = "up" | "down" | "flat";
 
-export type DecisionFill =
-  | { type: "filled"; notionalUsd: number; judgmentId: string }
-  | { type: "rejected"; reason: string }
-  | { type: "none" };
+export type { DecisionFill };
+
+export type SourceMode = "live" | "local";
+
+export type TapeView = {
+  symbol: Symbol;
+  regime: Regime;
+  features: SurfaceFeatures;
+  price: number;
+  time: number;
+};
 
 export type Decision = {
   id: string;
@@ -30,6 +36,9 @@ export type Decision = {
   price: number;
   time: number;
   fill: DecisionFill;
+  sizeLine: string | null;
+  choice: JudgeAction;
+  choiceProbability: number;
 };
 
 export type EquityPoint = {
@@ -71,14 +80,21 @@ type DeskState = {
   unrealizedUsd: number;
   latest: Decision | null;
   decisions: Decision[];
+  sourceMode: SourceMode;
+  sourcePinned: boolean;
+  jevConfigured: boolean | null;
+  tapeView: TapeView | null;
+  livePending: boolean;
   ensureBook: (caps: PaperCaps) => void;
   setSymbol: (symbol: Symbol) => void;
   setJevEnabled: (enabled: boolean) => void;
+  setSourceMode: (mode: SourceMode) => void;
+  noteJevHealth: (configured: boolean) => void;
 };
 
 const DEFAULT_CAPS: PaperCaps = {
   startingCashUsd: 10_000,
-  maxTradeNotionalUsd: 100,
+  maxTradeNotionalUsd: 200,
   maxSymbolNotionalUsd: 1_500,
   maxGrossNotionalUsd: 3_000,
 };
@@ -105,6 +121,11 @@ export const useDesk = create<DeskState>((set, get) => ({
   unrealizedUsd: 0,
   latest: null,
   decisions: [],
+  sourceMode: "local",
+  sourcePinned: false,
+  jevConfigured: null,
+  tapeView: null,
+  livePending: false,
   ensureBook: (caps) => {
     const current = get().book;
     if (current) {
@@ -130,7 +151,27 @@ export const useDesk = create<DeskState>((set, get) => ({
     });
     if (feedStarted) startFeed();
   },
-  setJevEnabled: (enabled) => set({ jevEnabled: enabled }),
+  setJevEnabled: (enabled) => {
+    if (!enabled) cancelLive();
+    else {
+      lastLiveCallAt = 0;
+      lastSignature = null;
+    }
+    set({ jevEnabled: enabled });
+  },
+  setSourceMode: (mode) => {
+    cancelLive();
+    lastLiveCallAt = 0;
+    lastSignature = null;
+    set({ sourceMode: mode, sourcePinned: true });
+  },
+  noteJevHealth: (configured) => {
+    const state = get();
+    set({
+      jevConfigured: configured,
+      sourceMode: state.sourcePinned ? state.sourceMode : configured ? "live" : "local",
+    });
+  },
 }));
 
 let candles: Candle[] = [];
@@ -148,6 +189,14 @@ let lastActAt = 0;
 let lastCard: { action: Judgment["action"]; symbol: Symbol; time: number } | null = null;
 let lastEquityPaint = 0;
 let decisionSeq = 0;
+let liveInFlight = false;
+let liveAbort: AbortController | null = null;
+let liveToken = 0;
+let lastLiveCallAt = 0;
+let liveNotBefore = 0;
+let lastSignature: TapeSignature | null = null;
+
+const LIVE_CLIENT_TIMEOUT_MS = 8_000;
 
 export function bindPriceChart(binding: CandleBinding | null) {
   priceBinding = binding;
@@ -162,6 +211,7 @@ export function bindEquityChart(binding: EquityBinding | null) {
 export function bootDesk(caps: PaperCaps): () => void {
   useDesk.getState().ensureBook(caps);
   startFeed();
+  void loadJevHealth();
   return stopFeed;
 }
 
@@ -188,6 +238,7 @@ function stopStream() {
   feedGen += 1;
   activeAbort?.abort();
   activeAbort = null;
+  cancelLive();
   if (raf !== 0) cancelAnimationFrame(raf);
   raf = 0;
   pendingTick = null;
@@ -196,6 +247,7 @@ function stopStream() {
 async function runSymbol(symbol: Symbol, gen: number, signal: AbortSignal) {
   ticks = [];
   lastJudgeAt = 0;
+  resetLiveCadence();
   replaceCandles([]);
   useDesk.setState({
     status: { type: "connecting", host: "stream.binance.com" },
@@ -280,14 +332,143 @@ function maybeJudge(now: number, price: number, symbol: Symbol) {
   if (!state.jevEnabled || !state.book) return;
   const snapshot = readTape(ticks);
   if (!snapshot || snapshot.sampleCount < 4 || snapshot.spanMs < 400) return;
+
+  const judgeInput = buildJudgeInput(state.book, state, snapshot, symbol, price, now);
   const elapsed = lastJudgeAt === 0 ? Number.POSITIVE_INFINITY : now - lastJudgeAt;
   const gap = Math.abs(snapshot.shockBps) >= THRESHOLDS.shockBps ? FAST_GAP_MS : JUDGMENT_GAP_MS;
-  if (elapsed < gap) return;
+  const regime = classifyRegime(snapshot.earlyMomentumBps, snapshot.lateMomentumBps, snapshot.volatilityBps);
+  const rawFeatures = surfaceFeatures(judgeInput);
+  const features = { ...rawFeatures, inventory: clampInventory(rawFeatures.inventory) };
 
-  lastJudgeAt = now;
-  const position = state.book.positions[symbol];
+  if (elapsed >= gap) {
+    lastJudgeAt = now;
+    useDesk.setState({ tapeView: { symbol, regime, features, price, time: now } });
+    if (state.sourceMode === "local") {
+      const judgment = judgeTick(judgeInput);
+      settleHost({
+        symbol,
+        price,
+        time: now,
+        judgment,
+        choice: judgment.action,
+        choiceProbability: judgment.probability,
+      });
+      return;
+    }
+  }
+
+  if (state.sourceMode !== "live") return;
+  if (snapshot.sampleCount < THRESHOLDS.warmupPrints || snapshot.spanMs < THRESHOLDS.minSpanMs) return;
+
+  const nextSignature: TapeSignature = {
+    regime,
+    momentumBps: snapshot.momentumBps,
+    imbalance: snapshot.imbalance,
+    shockBps: snapshot.shockBps,
+  };
+  if (
+    !liveCallDue({
+      now,
+      lastCallAt: lastLiveCallAt,
+      notBefore: liveNotBefore,
+      inFlight: liveInFlight,
+      previous: lastSignature,
+      next: nextSignature,
+    })
+  ) {
+    return;
+  }
+
+  const payload = buildDeskState({
+    symbol,
+    lastPrice: price,
+    regime,
+    features,
+    positionNotionalUsd: judgeInput.positionNotionalUsd,
+    cashUsd: judgeInput.cashUsd,
+    grossNotionalUsd: judgeInput.grossNotionalUsd,
+    symbolCapUsd: state.caps.maxSymbolNotionalUsd,
+    grossCapUsd: state.caps.maxGrossNotionalUsd,
+    maxTradeUsd: state.caps.maxTradeNotionalUsd,
+  });
+  lastLiveCallAt = now;
+  lastSignature = nextSignature;
+  if (!payload) {
+    const judgment = closedJudgment({ reason: "malformed", latencyMs: 0, features, regime });
+    settleHost({ symbol, price, time: now, judgment, choice: "wait", choiceProbability: 1 });
+    return;
+  }
+
+  const token = ++liveToken;
+  liveInFlight = true;
+  useDesk.setState({ livePending: true });
+  void runLive({ token, symbol, payload, features, regime, sentPrice: price });
+}
+
+function settleHost(input: {
+  symbol: Symbol;
+  price: number;
+  time: number;
+  judgment: Judgment;
+  choice: JudgeAction;
+  choiceProbability: number;
+}) {
+  const state = useDesk.getState();
+  if (!state.book || !state.jevEnabled || state.symbol !== input.symbol) return;
+  const marks = { ...state.marks, [input.symbol]: input.price };
+  const id = nextDecisionId();
+  const decided = decidePaper({
+    judgment: input.judgment,
+    choice: input.choice,
+    choiceProbability: input.choiceProbability,
+    book: state.book,
+    symbol: input.symbol,
+    price: input.price,
+    time: input.time,
+    judgmentId: id,
+    caps: state.caps,
+    marks,
+    gate: { type: "open" },
+    msSinceLastAct: lastActAt === 0 ? Number.POSITIVE_INFINITY : input.time - lastActAt,
+    cooldownMs: THRESHOLDS.actCooldownMs,
+  });
+  if (decided.filled) lastActAt = input.time;
+  const decision: Decision = {
+    id,
+    symbol: input.symbol,
+    judgment: decided.judgment,
+    price: input.price,
+    time: input.time,
+    fill: decided.fill,
+    sizeLine: decided.sizeLine,
+    choice: input.choice,
+    choiceProbability: input.choiceProbability,
+  };
+  const record = shouldRecord(decided.judgment.action, input.symbol, input.time);
+  if (record) lastCard = { action: decided.judgment.action, symbol: input.symbol, time: input.time };
+  if (decided.filled) paintEquity(equity(decided.book, marks), input.time, true);
+  const fresh = useDesk.getState();
+  useDesk.setState({
+    book: decided.book,
+    marks,
+    equityUsd: equity(decided.book, marks),
+    unrealizedUsd: unrealizedPnl(decided.book, marks),
+    latest: decision,
+    decisions: record ? [decision, ...fresh.decisions].slice(0, 48) : fresh.decisions,
+  });
+}
+
+function buildJudgeInput(
+  book: Book,
+  state: { jevEnabled: boolean; caps: PaperCaps; marks: Partial<Record<Symbol, number>> },
+  snapshot: TapeSnapshot,
+  symbol: Symbol,
+  price: number,
+  now: number,
+) {
+  const position = book.positions[symbol];
   const marks = { ...state.marks, [symbol]: price };
-  const judgment = judgeTick({
+  return {
     sampleCount: snapshot.sampleCount,
     spanMs: snapshot.spanMs,
     momentumBps: snapshot.momentumBps,
@@ -298,81 +479,102 @@ function maybeJudge(now: number, price: number, symbol: Symbol) {
     earlyMomentumBps: snapshot.earlyMomentumBps,
     lateMomentumBps: snapshot.lateMomentumBps,
     positionNotionalUsd: position.qty * price,
-    grossNotionalUsd: grossNotional(state.book, marks),
-    cashUsd: state.book.cashUsd,
+    grossNotionalUsd: grossNotional(book, marks),
+    cashUsd: book.cashUsd,
     msSinceLastAct: lastActAt === 0 ? Number.POSITIVE_INFINITY : now - lastActAt,
     jevEnabled: state.jevEnabled,
     caps: state.caps,
-  });
-
-  const id = nextDecisionId();
-  const side = orderSide(judgment.action);
-  let book = state.book;
-  let fill: DecisionFill = { type: "none" };
-  if (side) {
-    const live = useDesk.getState();
-    const gate = live.jevEnabled
-      ? ({ type: "open" } as const)
-      : ({ type: "frozen", reason: "Jev is off" } as const);
-    const result = applyOrder(
-      book,
-      {
-        type: side,
-        symbol,
-        notionalUsd: live.caps.maxTradeNotionalUsd,
-        price,
-        time: now,
-        judgmentId: id,
-      },
-      live.caps,
-      gate,
-      marks,
-    );
-    if (result.type === "filled") {
-      book = result.book;
-      fill = { type: "filled", notionalUsd: result.fill.notionalUsd, judgmentId: result.fill.judgmentId };
-      lastActAt = now;
-      paintEquity(equity(book, marks), now, true);
-    } else {
-      fill = { type: "rejected", reason: result.reason };
-    }
-  }
-
-  const decision: Decision = {
-    id,
-    symbol,
-    judgment,
-    price,
-    time: now,
-    fill,
   };
-  const record = shouldRecord(judgment.action, symbol, now);
-  if (record) lastCard = { action: judgment.action, symbol, time: now };
-  const fresh = useDesk.getState();
-  useDesk.setState({
-    book,
-    marks,
-    equityUsd: equity(book, marks),
-    unrealizedUsd: unrealizedPnl(book, marks),
-    latest: decision,
-    decisions: record ? [decision, ...fresh.decisions].slice(0, 48) : fresh.decisions,
-  });
 }
 
-function orderSide(action: JudgeAction): "buy" | "sell" | null {
-  switch (action) {
-    case "act_buy":
-      return "buy";
-    case "act_sell":
-      return "sell";
-    case "wait":
-    case "escalate":
-      return null;
-    default: {
-      const unreachable: never = action;
-      return unreachable;
+async function runLive(input: {
+  token: number;
+  symbol: Symbol;
+  payload: JevState;
+  features: SurfaceFeatures;
+  regime: Regime;
+  sentPrice: number;
+}) {
+  const controller = new AbortController();
+  liveAbort = controller;
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, LIVE_CLIENT_TIMEOUT_MS);
+  try {
+    const result = await requestLiveChoice(input.payload, controller.signal);
+    if (!liveStillCurrent(input.token, input.symbol)) return;
+    if (result.type === "closed" && result.reason === "rate-limited" && result.retryAfterMs !== null) {
+      liveNotBefore = Date.now() + result.retryAfterMs;
+    }
+    const judgment =
+      result.type === "choice"
+        ? choiceJudgment({ choice: result, features: input.features, regime: input.regime })
+        : closedJudgment({
+            reason: result.reason,
+            latencyMs: result.latencyMs,
+            features: input.features,
+            regime: input.regime,
+          });
+    const choice = result.type === "choice" ? result.action : "wait";
+    const choiceProbability = result.type === "choice" ? result.optionScores[result.action] : 1;
+    const price = useDesk.getState().lastPrice ?? input.sentPrice;
+    settleHost({ symbol: input.symbol, price, time: Date.now(), judgment, choice, choiceProbability });
+  } catch (error) {
+    if (!liveStillCurrent(input.token, input.symbol)) return;
+    if (!timedOut && isAbortError(error)) return;
+    const judgment = closedJudgment({
+      reason: timedOut ? "timeout" : "unavailable",
+      latencyMs: timedOut ? LIVE_CLIENT_TIMEOUT_MS : 0,
+      features: input.features,
+      regime: input.regime,
+    });
+    const price = useDesk.getState().lastPrice ?? input.sentPrice;
+    settleHost({ symbol: input.symbol, price, time: Date.now(), judgment, choice: "wait", choiceProbability: 1 });
+  } finally {
+    clearTimeout(timer);
+    if (input.token === liveToken) {
+      liveInFlight = false;
+      liveAbort = null;
+      if (useDesk.getState().livePending) useDesk.setState({ livePending: false });
     }
   }
+}
+
+function liveStillCurrent(token: number, symbol: Symbol): boolean {
+  const state = useDesk.getState();
+  return token === liveToken && state.jevEnabled && state.sourceMode === "live" && state.symbol === symbol;
+}
+
+function cancelLive() {
+  liveToken += 1;
+  liveAbort?.abort();
+  liveAbort = null;
+  liveInFlight = false;
+  if (useDesk.getState().livePending) useDesk.setState({ livePending: false });
+}
+
+function resetLiveCadence() {
+  cancelLive();
+  lastLiveCallAt = 0;
+  lastSignature = null;
+}
+
+function loadJevHealth(): Promise<void> {
+  return fetch("/api/jev/health", { cache: "no-store" })
+    .then(async (response) => {
+      if (!response.ok) return;
+      const body: unknown = await response.json();
+      const parsed = jevHealthSchema.safeParse(body);
+      if (!parsed.success) return;
+      useDesk.getState().noteJevHealth(parsed.data.configured);
+    })
+    .catch(() => undefined);
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
 }
 
 function shouldRecord(action: Judgment["action"], symbol: Symbol, now: number): boolean {

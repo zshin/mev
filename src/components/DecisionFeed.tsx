@@ -4,10 +4,10 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useState } from "react";
 
 import { SurfaceReadout } from "@/components/SurfaceReadout";
-import { formatBps, formatClock, formatUsd } from "@/lib/format";
-import { STRATEGY_NAME, THRESHOLDS, type JudgeAction, type OptionScores } from "@/lib/jev/judge";
+import { formatBps, formatClock } from "@/lib/format";
+import { THRESHOLDS, type JudgeAction, type OptionScores } from "@/lib/jev/judge";
 import { baseAsset } from "@/lib/market/types";
-import { useDesk, type Decision, type DecisionFill } from "@/lib/store";
+import { useDesk, type Decision, type SourceMode } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
 type FeedFilter = "all" | "act" | "wait" | "escalate";
@@ -24,9 +24,12 @@ export function DecisionFeed() {
   const latest = useDesk((state) => state.latest);
   const jevEnabled = useDesk((state) => state.jevEnabled);
   const symbol = useDesk((state) => state.symbol);
+  const sourceMode = useDesk((state) => state.sourceMode);
+  const configured = useDesk((state) => state.jevConfigured);
+  const setSourceMode = useDesk((state) => state.setSourceMode);
   const [filter, setFilter] = useState<FeedFilter>("all");
   const visible = decisions.filter((decision) => matches(decision.judgment.action, filter));
-  const current = jevEnabled && latest?.symbol === symbol ? latest : null;
+  const current = jevEnabled && latest?.symbol === symbol && latest.judgment.origin === sourceMode ? latest : null;
 
   return (
     <section className="glass-panel flex min-h-0 flex-col" data-testid="decision-feed">
@@ -34,16 +37,19 @@ export function DecisionFeed() {
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <h2 className="kicker">Decisions</h2>
-            <span className="truncate text-[11px] text-zinc-500">
-              {STRATEGY_NAME} · local stand-in, not a hosted Jev call
-            </span>
+            <SourceToggle mode={sourceMode} onChange={setSourceMode} />
+            {sourceMode === "local" && configured === false ? (
+              <span className="truncate text-[11px] text-zinc-500">Offline fallback</span>
+            ) : null}
           </div>
           <p className="mt-1 truncate font-mono text-[11px] text-zinc-400">
             {current
               ? `${baseAsset(current.symbol)}  ${chipLabel(current.judgment.action)}  ${current.judgment.probability.toFixed(2)}  ${current.judgment.reason}`
               : jevEnabled
-                ? "Reading the tape"
-                : "Jev off. Tape live. Surface gated."}
+                ? sourceMode === "live"
+                  ? "Reading the tape. Live Jev on the next window."
+                  : "Reading the tape"
+                : "Jev off. Tape live. Judgments gated."}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
@@ -77,7 +83,7 @@ export function DecisionFeed() {
             <p className="px-2 py-8 text-center text-[12px] text-zinc-600">{emptyCopy(filter, jevEnabled, decisions.length)}</p>
           ) : null}
         </div>
-        <SurfaceReadout judgment={current?.judgment ?? null} jevEnabled={jevEnabled} />
+        <SurfaceReadout />
       </div>
     </section>
   );
@@ -100,7 +106,7 @@ function DecisionRow({ decision }: { decision: Decision }) {
         <ActionChip action={judgment.action} />
         <span className="w-9 shrink-0 font-mono text-[12px] text-zinc-200 tabular-nums">{judgment.probability.toFixed(2)}</span>
         <p className="min-w-0 flex-1 truncate text-[12px] text-zinc-300">{judgment.drivers.join(" · ")}</p>
-        <FillMark fill={decision.fill} id={decision.id} />
+        <RowMark decision={decision} />
       </div>
       <p className="mt-0.5 truncate pl-16 font-mono text-[10px] text-zinc-500">
         {judgment.regime}
@@ -124,27 +130,58 @@ function ActionChip({ action }: { action: JudgeAction }) {
   );
 }
 
-function FillMark({ fill, id }: { fill: DecisionFill; id: string }) {
-  switch (fill.type) {
+function SourceToggle({ mode, onChange }: { mode: SourceMode; onChange: (mode: SourceMode) => void }) {
+  const options: { id: SourceMode; label: string }[] = [
+    { id: "live", label: "Live Jev" },
+    { id: "local", label: "Local surface" },
+  ];
+  return (
+    <div className="flex items-center gap-1" role="group" aria-label="Judgment source" data-testid="source-mode">
+      {options.map((option) => {
+        const selected = mode === option.id;
+        return (
+          <button
+            key={option.id}
+            type="button"
+            aria-pressed={selected}
+            onClick={() => onChange(option.id)}
+            className={cn(
+              "rounded-full px-2 py-1 font-mono text-[10px]",
+              selected ? "bg-white/10 text-zinc-100" : "text-zinc-500 hover:text-zinc-300",
+            )}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function RowMark({ decision }: { decision: Decision }) {
+  const line = decision.sizeLine;
+  switch (decision.fill.type) {
     case "filled":
-      return (
-        <span className="shrink-0 font-mono text-[10px] text-mint tabular-nums">
-          {formatUsd(fill.notionalUsd, 0)} · {id}
-        </span>
-      );
+      return <Mark tone="text-mint" line={line} id={decision.id} title={line ?? decision.id} />;
     case "rejected":
-      return (
-        <span className="shrink-0 font-mono text-[10px] text-rose" title={fill.reason}>
-          Blocked · {id}
-        </span>
-      );
+      return <Mark tone="text-rose" line={line ?? "Blocked"} id={decision.id} title={decision.fill.reason} />;
     case "none":
-      return null;
+      if (!line) return null;
+      return <Mark tone="text-zinc-400" line={line} id={null} title={line} />;
     default: {
-      const unreachable: never = fill;
+      const unreachable: never = decision.fill;
       return unreachable;
     }
   }
+}
+
+function Mark({ tone, line, id, title }: { tone: string; line: string | null; id: string | null; title: string }) {
+  return (
+    <span className={cn("flex max-w-[300px] shrink-0 items-center gap-1 font-mono text-[10px] tabular-nums", tone)} title={title}>
+      <span className="truncate">{line}</span>
+      {id ? <span className="shrink-0">{id}</span> : null}
+    </span>
+  );
 }
 
 function matches(action: JudgeAction, filter: FeedFilter): boolean {

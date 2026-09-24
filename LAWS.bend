@@ -25,7 +25,7 @@ law EscalateIsStubbed {
 law PositionCaps {
   scope: paper
   starting_cash_usd: 10000
-  max_trade_notional_usd: 100
+  max_trade_notional_usd: 200
   max_symbol_notional_usd: 1500
   max_gross_notional_usd: 3000
   because: "Paper risk stays inside a fixed envelope."

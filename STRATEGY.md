@@ -1,81 +1,74 @@
-# Tape Alignment Surface
+# Tape Alignment + Live Jev
 
-One page for the demo. This desk does not predict the next tick. Each cycle it scores four exclusive options, turns the scores into probabilities, and lets the hard gates win.
+One page for the demo. Paper only. The desk never places an exchange order.
 
-It is a **typed local stand-in** shaped like Jev: options, probabilities, then a verdict gate. It is not a hosted Jev call. No API key. No real order.
+Say it in one breath:
 
-## The story
+**Binance tape → host features → live Jev Choice → probability → host size → LAWS gate → paper fill.**
 
-```
-live tape + paper book
-  → features
-  → regime (trend | chop)
-  → logit for act_buy, act_sell, wait, escalate
-  → hard gate (Jev, cooldown, caps, cash)
-  → softmax probability
-  → action
-```
+Jev picks among four exclusive options and returns a probability for each. The host turns that probability into a dollar size and then refuses anything the caps will not allow. Jev never chooses a dollar amount. Escalate never fills.
 
-Say it as: **inputs → Surface scores → probability → gated action.**
+## Sixty seconds
 
-The four numbers in `optionScores` are the probabilities after the gate. They sum to 1. `probability` is the weight of the chosen action.
+1. The wall is the public Binance tape (trades and 1-second candles) and a paper book. Jev starts off. The tape still moves.
+2. Arm Jev. If `TYPESAFE_API_KEY` is set, the source is **Live Jev**. Otherwise it is the **Local surface**, labeled offline fallback. The toggle is on the decision feed: Live Jev / Local surface.
+3. The host reads about seven seconds of tape plus the book: momentum, taker imbalance, volatility, shock, regime (`trend` or `chop`), inventory, cooldown, symbol, last price, cash room, caps remaining. That object is the whole `state`. It is not a writeup.
+4. On a meaningful tape change, and at least every 2.5 seconds while armed, the server posts one Choice to `https://api.typesafe.ai/v1/systemone` (`model: jev-latest`). The browser never sees the key. The local feature readout can move faster than that. We do not call on every 650ms tick.
+5. Jev answers `act_buy`, `act_sell`, `wait`, or `escalate`, with a probability on each. The readout shows Live vs Local, the model id that answered, latency, the four probabilities, the regime, and a size preview.
+6. The host reads `p` on the option Jev selected.
+   - `p < 0.60` → no fill. The row is recorded as wait, marked too soft.
+   - `0.60–0.74` → $50
+   - `0.75–0.89` → $100
+   - `0.90+` → $200
+7. If that order adds to a position already on the same side, multiply by `1 - 0.5 * |inventory|`. Inventory is position notional over the symbol cap, clamped to [-1, 1]. Covering or reducing does not take that haircut.
+8. Clamp what remains to symbol room, gross room, cash (buys), and `max_trade_notional_usd` ($200). An act row shows `$size · p=… · bucket / lean / cap` and the same id as the paper fill.
+9. Escalate is a stub. It is on the feed. It does not size, fill, or call a webhook.
+10. If the key is missing, the call times out, or TypeSafe returns 401, 429, 5xx, or a body we cannot parse, the cycle is **wait**. The wall says why. The Binance tape stays up. We do not silently fill from the local scorer.
 
-The live **Surface** stack is the current cycle. The **Decisions** feed is the sequential log, newest first. Acts are always kept. A repeated wait is kept again after 4s, a repeated escalate after 5s, so a quiet tape does not flood the wall. The stack still moves on every cycle (about 650ms, faster when shock is past the line).
+## What Jev is asked
 
-## Inputs
+One Choice, options exactly `act_buy`, `act_sell`, `wait`, `escalate`.
 
-All of these are on the card. They come from the live Binance window (about 7 seconds) and the paper book.
+Instructions: this is a short-horizon tape-alignment desk. Follow when the regime is trend and momentum and taker imbalance agree. Prefer wait in chop. Escalate on shock or disagreement. Never invent a fill, a price, or a size.
 
-| Feature | Meaning |
-| --- | --- |
-| `momentumBps` | Return from the first print in the window to the last |
-| `imbalance` | Taker buy quantity minus taker sell quantity, over the total. About +1 is all lifting, −1 is all hitting |
-| `volatilityBps` | High minus low of the window, in bps of the last price |
-| `shockBps` | The sharp end of the window. The larger of the last trade-to-trade print and the trailing 1 second. On BTC one print is often a single tick, well under 1 bp, so the 1s burst is the shock a person can see |
-| `regime` | `trend` or `chop` |
-| `inventory` | Signed position notional divided by the symbol cap. +1 is a full long |
-| `cooldown` | Milliseconds since the last paper act. The card says `ready` once that is at least 2.5s |
+`act_buy` opens or adds long paper risk, or covers a short. `act_sell` opens or adds short paper risk, or reduces a long. That matches the paper book: buy increases quantity, sell decreases it.
 
-## Regime
+## Local surface
 
-**Trend** when both halves of the window share a sign, each half moved at least **0.7 bps**, and the range is under **4 bps**.
+The Tape Alignment Surface in `src/lib/jev/surface.ts` is the offline fallback. It still scores the same four options from logits, then gates. It does not use the probability ladder. A local act is a flat clip at `max_trade_notional_usd`. Use it when there is no key, or when you want the demo to run without a hosted call.
 
-**Chop** otherwise. A push that is only in one half is chop. We do not chase it.
+## Gates that always win
 
-## What each regime prefers
-
-- **Trend.** Follow when momentum and taker imbalance agree and vol is still clean. Inventory leans against adding to a side you already hold.
-- **Chop.** Prefer wait. A small chase exists in the score and loses to wait unless the tape stops being chop.
-- **Escalate** (stub, never a fill) when any of these clear the wait prior:
-  - shock at least **1.8 bps**
-  - momentum and taker fight: |momentum| ≥ **1.5 bps** and |imbalance| ≥ **0.28**, opposite signs
-  - the window reverses: halves oppose, each at least **0.9 bps**
-  - chop range at least **4.5 bps**
-- **Wait** for warmup (under 12 prints), a window shorter than 1.5s, inside the noise (|momentum| under 1.15 bps and no escalate kick), cooldown, or a binding cap.
-
-Calm BTC often sits in wait. One print there is worth a fraction of a basis point, so escalate is uncommon until the 1s burst, a reversal, or a real disagreement shows up. SOL reaches those lines more often. That is the tape, not a hidden coin rule. Thresholds live in `THRESHOLDS` in `src/lib/jev/surface.ts`. The formulas are in the comment above them.
-
-## Gates
-
-Softmax runs **after** the gate. An illegal act is floored, so its probability collapses and the mass sits on wait or escalate.
-
-The gate blocks an act when:
-
-- Jev is off
-- the last act was under 2.5s ago (`cooldown 2.1s` and `surface leaned buy` or `sell`)
-- the symbol cap or the gross cap has under $5 of room
-- a buy would need cash and cash is under $5
-
-Reducing a position is not treated as a new cap breach. Escalate never calls the paper book. `LAWS.bend` still supplies the four numbers. The other lines in that file are not a policy engine. There is no order client.
+- Jev off: no new judgment, no new fill. Marks keep running.
+- Cooldown: 2.5s after a fill, the host will not send another act. The row says `cooldown 1.2s`.
+- Caps, from `LAWS.bend`: cash $10,000, trade $200, symbol $1,500, gross $3,000. Caps bind the order, not a later mark-to-market rally.
+- Minimum paper clip is $5. Below that, the row is blocked.
+- Escalate never reaches the book.
 
 ## What is real
 
 | | Real | Paper | Stub |
 | --- | --- | --- | --- |
 | Prices | Binance public trades and 1s klines | — | — |
-| Decision Surface | — | Local scores in this process | — |
+| Live Jev | Hosted Choice on TypeSafe when a key is set | The fill is still paper | — |
+| Local surface | — | Scores in this process | Offline fallback |
 | Orders | Never sent | Buy/sell at the last trade, inside the caps | — |
-| Escalate | — | A row on the feed | No model, no page, no webhook |
-| Chart | Binance prices drawn with TradingView Lightweight Charts | — | Not a TradingView terminal. The library logo is off. The chart header carries the credit and link |
+| Escalate | — | A row on the feed | No page, no webhook |
+| Chart | Binance prices drawn with TradingView Lightweight Charts | — | Not a TradingView terminal. The library logo is off. The chart header carries the credit |
 
-Every paper fill stores the judgment id that caused it. The feed row and the paper book’s recent fills show that id.
+Every paper fill stores the judgment id that caused it. The feed row and the recent fills show that id.
+
+## Cadence
+
+- Feature readout: about every 650ms, sooner when shock is past the line. Same window as before.
+- Live call: not while a call is in flight; not twice inside 800ms; immediately on a regime change, a 1bp momentum move, a 0.15 imbalance move, a momentum sign flip, or shock crossing 1.8bp; otherwise every 2.5s.
+- A 429 honors `retry-after` (capped at 60s) before the next call.
+- The call itself times out at 4 seconds and fails closed to wait.
+
+## Honest limits
+
+Calm BTC often waits. One print is a fraction of a basis point. SOL reaches trend and shock more often. That is the tape.
+
+Switching coins keeps the book and freezes the mark of the coin you left, because only one socket is open. Equity for that coin is stale until you come back.
+
+The feed keeps every act, and repeats a wait after 4s or an escalate after 5s. It is a sampled tape, not an audit ledger. The book keeps 40 fills; the feed keeps 48 rows.

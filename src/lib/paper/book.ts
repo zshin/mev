@@ -42,6 +42,12 @@ export type ApplyResult =
   | { type: "filled"; book: Book; fill: PaperFill }
   | { type: "rejected"; book: Book; reason: string };
 
+export type ExposureBind = "max-trade" | "symbol" | "gross" | "cash";
+
+export type FitNotional =
+  | { type: "ok"; notionalUsd: number; deltaQty: number; binds: ExposureBind[] }
+  | { type: "rejected"; reason: string };
+
 const MIN_NOTIONAL_USD = 5;
 
 export function createBook(startingCashUsd: number): Book {
@@ -86,6 +92,50 @@ export function grossNotional(book: Book, marks: Partial<Record<Symbol, number>>
   return gross;
 }
 
+export function fitNotional(
+  book: Book,
+  order: { type: "buy" | "sell"; symbol: Symbol; notionalUsd: number; price: number },
+  caps: PaperCaps,
+  marks: Partial<Record<Symbol, number>>,
+): FitNotional {
+  if (!(order.price > 0) || !Number.isFinite(order.price)) {
+    return { type: "rejected", reason: "price unavailable" };
+  }
+
+  const requested = Math.max(order.notionalUsd, 0);
+  let notional = Math.min(requested, caps.maxTradeNotionalUsd);
+  const binds: ExposureBind[] = [];
+  if (requested > caps.maxTradeNotionalUsd + 1e-9) binds.push("max-trade");
+  if (notional < MIN_NOTIONAL_USD) {
+    return { type: "rejected", reason: "notional below minimum" };
+  }
+
+  const position = book.positions[order.symbol];
+  const price = order.price;
+  const sign = order.type === "buy" ? 1 : -1;
+  const desiredQty = position.qty + sign * (notional / price);
+  const fitted = fitExposure(book, order.symbol, position.qty, desiredQty, price, caps, marks);
+  if (fitted.type === "rejected") {
+    return { type: "rejected", reason: fitted.reason };
+  }
+
+  let delta = fitted.nextQty - position.qty;
+  if (fitted.clipped) binds.push(fitted.clipped);
+  notional = Math.abs(delta) * price;
+  if (delta > 0 && notional > book.cashUsd + 1e-9) {
+    if (book.cashUsd < MIN_NOTIONAL_USD) {
+      return { type: "rejected", reason: "cash insufficient" };
+    }
+    delta = book.cashUsd / price;
+    notional = delta * price;
+    binds.push("cash");
+  }
+  if (notional < MIN_NOTIONAL_USD || Math.sign(delta) !== sign) {
+    return { type: "rejected", reason: "notional below minimum" };
+  }
+  return { type: "ok", notionalUsd: notional, deltaQty: delta, binds };
+}
+
 export function applyOrder(
   book: Book,
   order: PaperOrder,
@@ -96,37 +146,16 @@ export function applyOrder(
   if (gate.type === "frozen") {
     return { type: "rejected", book, reason: gate.reason };
   }
-  if (!(order.price > 0) || !Number.isFinite(order.price)) {
-    return { type: "rejected", book, reason: "price unavailable" };
-  }
 
-  const price = order.price;
-  let notional = Math.min(Math.max(order.notionalUsd, 0), caps.maxTradeNotionalUsd);
-  if (notional < MIN_NOTIONAL_USD) {
-    return { type: "rejected", book, reason: "notional below minimum" };
-  }
-
-  const position = book.positions[order.symbol];
-  const sign = order.type === "buy" ? 1 : -1;
-  const desiredQty = position.qty + sign * (notional / price);
-  const fitted = fitExposure(book, order.symbol, position.qty, desiredQty, price, caps, marks);
+  const fitted = fitNotional(book, order, caps, marks);
   if (fitted.type === "rejected") {
     return { type: "rejected", book, reason: fitted.reason };
   }
 
-  let delta = fitted.nextQty - position.qty;
-  notional = Math.abs(delta) * price;
-  if (delta > 0 && notional > book.cashUsd + 1e-9) {
-    if (book.cashUsd < MIN_NOTIONAL_USD) {
-      return { type: "rejected", book, reason: "cash insufficient" };
-    }
-    delta = book.cashUsd / price;
-    notional = delta * price;
-  }
-  if (notional < MIN_NOTIONAL_USD || Math.sign(delta) !== sign) {
-    return { type: "rejected", book, reason: "notional below minimum" };
-  }
-
+  const price = order.price;
+  const position = book.positions[order.symbol];
+  const delta = fitted.deltaQty;
+  const notional = fitted.notionalUsd;
   const qty = Math.abs(delta);
   const combined = combinePosition(position, delta, price);
   const fill: PaperFill = {
@@ -158,9 +187,9 @@ function fitExposure(
   price: number,
   caps: PaperCaps,
   marks: Partial<Record<Symbol, number>>,
-): { type: "ok"; nextQty: number } | { type: "rejected"; reason: string } {
+): { type: "ok"; nextQty: number; clipped: "symbol" | "gross" | null } | { type: "rejected"; reason: string } {
   if (Math.abs(desiredQty) <= Math.abs(oldQty) + 1e-12) {
-    return { type: "ok", nextQty: desiredQty };
+    return { type: "ok", nextQty: desiredQty, clipped: null };
   }
 
   const symbolMaxAbsQty = caps.maxSymbolNotionalUsd / price;
@@ -168,7 +197,7 @@ function fitExposure(
   const grossMaxAbsQty = Math.max(0, caps.maxGrossNotionalUsd - otherGross) / price;
   const maxAbsQty = Math.min(symbolMaxAbsQty, grossMaxAbsQty);
   if (Math.abs(desiredQty) <= maxAbsQty + 1e-9) {
-    return { type: "ok", nextQty: desiredQty };
+    return { type: "ok", nextQty: desiredQty, clipped: null };
   }
 
   const nextQty = Math.sign(desiredQty) * maxAbsQty;
@@ -177,7 +206,8 @@ function fitExposure(
     const reason = symbolMaxAbsQty <= grossMaxAbsQty ? "symbol notional cap" : "gross notional cap";
     return { type: "rejected", reason };
   }
-  return { type: "ok", nextQty };
+  const clipped = symbolMaxAbsQty <= grossMaxAbsQty ? "symbol" : "gross";
+  return { type: "ok", nextQty, clipped };
 }
 
 function grossExcluding(
