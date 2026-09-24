@@ -79,7 +79,7 @@ export const choiceResultSchema = z
     latencyMs: z.number().finite().nonnegative(),
     action: z.enum(JUDGE_ACTIONS),
     probability: unit,
-    confidence: unit.nullable(),
+    confidence: unit,
     optionScores: optionScoresSchema,
   })
   .strict();
