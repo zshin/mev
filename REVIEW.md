@@ -114,7 +114,7 @@ against Binance event timestamps (`src/lib/store.ts:330`,
 clocks make this negligible; material clock skew can shorten or lengthen the
 backoff.
 
-## Ship blockers fixed in this review
+## Ship blockers and demo footguns fixed in this review
 
 1. A TypeSafe Choice without the OpenAPI-required `confidence` field was
    accepted and could fill. Upstream and host schemas now require a finite
@@ -134,6 +134,15 @@ backoff.
    excludes that original choice from runner-up calculation
    (`src/lib/jev/liveJudgment.ts:61-70`,
    `src/components/DecisionFeed.tsx:91-119`).
+5. The header's bare “Live” label meant the Binance socket, while the Jev
+   readout could combine a fresh tape regime with prior hosted scores and a
+   recomputed preview. The header now says “Binance live”; the readout keeps
+   model, latency, regime, probabilities, and the actual applied/blocked size
+   line from one completed decision (`src/components/Dashboard.tsx:100-109`,
+   `src/components/SurfaceReadout.tsx:22-79`).
+6. Strategy copy said cooldown prevented another act from being sent. Live Jev
+   can still return an act during cooldown; the host blocks its fill. The demo
+   script now says exactly that (`STRATEGY.md:41-45`).
 
 ## What was verified
 
@@ -170,10 +179,14 @@ this repository.
    TypeSafe calls; direct callers bypass browser cadence.
 3. Say “browser builds the desk state; server holds the key and calls TypeSafe.”
    Do not say the server independently reconstructs the tape or paper book.
-4. After the first fill, do not switch coins. Off-symbol positions keep stale
+4. “Binance live” in the header is only the market stream. Hosted judgment
+   source is the separate Live Jev / Local surface control and readout.
+5. A below-threshold row records Wait while the readout highlights the act Jev
+   selected. Say “Jev selected the act; the host rejected it below 0.60.”
+6. After the first fill, do not switch coins. Off-symbol positions keep stale
    marks.
-5. A failure row's Wait 1.00 is the host's fail-closed output, not Jev certainty.
-6. On 429, stop toggling/reloading and wait for the shown service recovery; the
+7. A failure row's Wait 1.00 is the host's fail-closed output, not Jev certainty.
+8. On 429, stop toggling/reloading and wait for the shown service recovery; the
    client honors `Retry-After` or waits 10 seconds by default.
-7. If the readout stays on “Waiting for a window” during very heavy tape, the
+9. If the readout stays on “Waiting for a window” during very heavy tape, the
    500-print cap may have collapsed the retained span below 1.5 seconds.
